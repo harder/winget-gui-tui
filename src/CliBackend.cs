@@ -22,70 +22,35 @@ public sealed partial class CliBackend : IBackend
 
     public async Task<IReadOnlyList<Package>> SearchAsync (string query, SourceFilter source, CancellationToken ct)
     {
-        List<string> args = ["search", query, "--accept-source-agreements"];
-
-        if (source != SourceFilter.All)
-        {
-            args.Add ("--source");
-            args.Add (SourceArg (source));
-        }
-
-        string output = await RunAsync (args, ct);
+        string output = await RunAsync (SearchArgs (query, source), ct);
 
         return ParseTable (output, hasAvailable: false);
     }
 
     public async Task<IReadOnlyList<Package>> ListInstalledAsync (SourceFilter source, CancellationToken ct)
     {
-        List<string> args = ["list", "--accept-source-agreements"];
-
-        if (source != SourceFilter.All)
-        {
-            args.Add ("--source");
-            args.Add (SourceArg (source));
-        }
-
-        string output = await RunAsync (args, ct);
+        string output = await RunAsync (ListInstalledArgs (source), ct);
 
         return ParseTable (output, hasAvailable: false);
     }
 
     public async Task<IReadOnlyList<Package>> ListUpgradesAsync (SourceFilter source, CancellationToken ct)
     {
-        List<string> args = ["upgrade", "--accept-source-agreements", "--include-pinned"];
-
-        if (source != SourceFilter.All)
-        {
-            args.Add ("--source");
-            args.Add (SourceArg (source));
-        }
-
-        string output = await RunAsync (args, ct);
+        string output = await RunAsync (ListUpgradesArgs (source), ct);
 
         return ParseTable (output, hasAvailable: true);
     }
 
     public async Task<PackageDetail?> ShowAsync (string id, CancellationToken ct)
     {
-        string [] args = ["show", "--id", id, "--exact", "--accept-source-agreements"];
-        string output = await RunAsync (args, ct);
+        string output = await RunAsync (ShowArgs (id), ct);
 
         return ParseShow (id, output);
     }
 
     public async Task<OpResult> InstallAsync (string id, string? version, CancellationToken ct)
     {
-        // Match upstream's argument list exactly: no `--exact`. Some package ids need a
-        // substring match against the winget catalog (e.g. monikered store packages).
-        List<string> args = ["install", "--id", id, "--accept-source-agreements", "--accept-package-agreements"];
-
-        if (!string.IsNullOrEmpty (version))
-        {
-            args.Add ("--version");
-            args.Add (version);
-        }
-
-        (int code, string output) = await RunWithCodeAsync (args, ct);
+        (int code, string output) = await RunWithCodeAsync (InstallArgs (id, version), ct);
         Operation op = new () { Kind = OperationKind.Install, PackageId = id, Version = version };
 
         return new () { Operation = op, Success = code == 0, Message = output };
@@ -93,8 +58,7 @@ public sealed partial class CliBackend : IBackend
 
     public async Task<OpResult> UninstallAsync (string id, CancellationToken ct)
     {
-        string [] args = ["uninstall", "--id", id, "--accept-source-agreements"];
-        (int code, string output) = await RunWithCodeAsync (args, ct);
+        (int code, string output) = await RunWithCodeAsync (UninstallArgs (id), ct);
         Operation op = new () { Kind = OperationKind.Uninstall, PackageId = id };
 
         return new () { Operation = op, Success = code == 0, Message = output };
@@ -103,13 +67,11 @@ public sealed partial class CliBackend : IBackend
     public async Task<OpResult> UpgradeAsync (string id, CancellationToken ct)
     {
         // Upstream tries id (non-exact) first, then falls back to name (exact). Match that.
-        string [] args = ["upgrade", "--id", id, "--accept-source-agreements", "--accept-package-agreements"];
-        (int code, string output) = await RunWithCodeAsync (args, ct);
+        (int code, string output) = await RunWithCodeAsync (UpgradeByIdArgs (id), ct);
 
         if (code != 0)
         {
-            string [] fallback = ["upgrade", "--name", id, "--exact", "--accept-source-agreements", "--accept-package-agreements"];
-            (code, output) = await RunWithCodeAsync (fallback, ct);
+            (code, output) = await RunWithCodeAsync (UpgradeByNameArgs (id), ct);
         }
 
         Operation op = new () { Kind = OperationKind.Upgrade, PackageId = id };
@@ -119,8 +81,7 @@ public sealed partial class CliBackend : IBackend
 
     public async Task<OpResult> PinAsync (string id, CancellationToken ct)
     {
-        string [] args = ["pin", "add", "--id", id, "--exact", "--blocking", "--disable-interactivity"];
-        (int code, string output) = await RunWithCodeAsync (args, ct);
+        (int code, string output) = await RunWithCodeAsync (PinAddArgs (id), ct);
         Operation op = new () { Kind = OperationKind.Pin, PackageId = id };
 
         return new () { Operation = op, Success = code == 0, Message = output };
@@ -128,12 +89,92 @@ public sealed partial class CliBackend : IBackend
 
     public async Task<OpResult> UnpinAsync (string id, CancellationToken ct)
     {
-        string [] args = ["pin", "remove", "--id", id, "--exact", "--disable-interactivity"];
-        (int code, string output) = await RunWithCodeAsync (args, ct);
+        (int code, string output) = await RunWithCodeAsync (PinRemoveArgs (id), ct);
         Operation op = new () { Kind = OperationKind.Unpin, PackageId = id };
 
         return new () { Operation = op, Success = code == 0, Message = output };
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // CLI argument construction — extracted as static helpers so they're
+    // unit-testable without invoking the winget subprocess. Each method must
+    // match upstream src/cli_backend.rs exactly; tests in tests/ParserTests.cs
+    // catch any drift.
+    // ──────────────────────────────────────────────────────────────────────
+
+    internal static string [] SearchArgs (string query, SourceFilter source)
+    {
+        List<string> args = ["search", query, "--accept-source-agreements"];
+
+        if (source != SourceFilter.All)
+        {
+            args.Add ("--source");
+            args.Add (SourceArg (source));
+        }
+
+        return [.. args];
+    }
+
+    internal static string [] ListInstalledArgs (SourceFilter source)
+    {
+        List<string> args = ["list", "--accept-source-agreements"];
+
+        if (source != SourceFilter.All)
+        {
+            args.Add ("--source");
+            args.Add (SourceArg (source));
+        }
+
+        return [.. args];
+    }
+
+    internal static string [] ListUpgradesArgs (SourceFilter source)
+    {
+        List<string> args = ["upgrade", "--accept-source-agreements", "--include-pinned"];
+
+        if (source != SourceFilter.All)
+        {
+            args.Add ("--source");
+            args.Add (SourceArg (source));
+        }
+
+        return [.. args];
+    }
+
+    internal static string [] ShowArgs (string id) =>
+        ["show", "--id", id, "--exact", "--accept-source-agreements"];
+
+    internal static string [] InstallArgs (string id, string? version)
+    {
+        // Match upstream's argument list: no `--exact`. Some ids need substring match
+        // against the catalog (e.g. monikered store packages).
+        List<string> args = ["install", "--id", id, "--accept-source-agreements", "--accept-package-agreements"];
+
+        if (!string.IsNullOrEmpty (version))
+        {
+            args.Add ("--version");
+            args.Add (version);
+        }
+
+        return [.. args];
+    }
+
+    internal static string [] UninstallArgs (string id) =>
+        ["uninstall", "--id", id, "--accept-source-agreements"];
+
+    internal static string [] UpgradeByIdArgs (string id) =>
+        ["upgrade", "--id", id, "--accept-source-agreements", "--accept-package-agreements"];
+
+    internal static string [] UpgradeByNameArgs (string id) =>
+        ["upgrade", "--name", id, "--exact", "--accept-source-agreements", "--accept-package-agreements"];
+
+    internal static string [] PinAddArgs (string id) =>
+        ["pin", "add", "--id", id, "--exact", "--blocking", "--disable-interactivity"];
+
+    internal static string [] PinRemoveArgs (string id) =>
+        ["pin", "remove", "--id", id, "--exact", "--disable-interactivity"];
+
+    internal static string [] PinListArgs () => ["pin", "list"];
 
     public async Task<IReadOnlyDictionary<string, PinState>> ListPinsAsync (CancellationToken ct)
     {

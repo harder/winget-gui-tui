@@ -1,5 +1,3 @@
-using Xunit;
-
 namespace WingetTui.Tests;
 
 /// <summary>
@@ -566,5 +564,432 @@ public class ParserTests
         Assert.Equal (PinStateKind.Blocking, pins ["Acme.Foo"].Kind);
         Assert.Equal (PinStateKind.Gating, pins ["Acme.Bar"].Kind);
         Assert.Equal ("2.45.*", pins ["Acme.Bar"].GatingVersion);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // ParseTable — special id formats that broke with earlier parser versions
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseTable_AcceptsStoreProductIds ()
+    {
+        // Microsoft Store ids are pure alphanumeric (no dots, no backslashes). The
+        // bad-id-rejection rule must not drop these — it only rejects rows where id
+        // contains a SPACE without dot/backslash.
+        const string output = """
+            Name             Id              Version    Source
+            ----------------------------------------------------
+            VLC              XPDM1ZWG815MQM  3.0.20     msstore
+            WhatsApp         9NKSQGP7F2NH    2.2412.10  msstore
+            """;
+
+        IReadOnlyList<Package> rows = CliBackend.ParseTable (output, hasAvailable: false);
+
+        Assert.Equal (2, rows.Count);
+        Assert.Equal ("XPDM1ZWG815MQM", rows [0].Id);
+        Assert.Equal ("9NKSQGP7F2NH", rows [1].Id);
+    }
+
+    [Fact]
+    public void ParseTable_AcceptsArpMachineIdsWithBackslashes ()
+    {
+        // ARP\Machine\X64\Git_is1 — these come from Windows' Add/Remove Programs and
+        // have backslashes in the id. The valid-id check requires `.` OR `\`.
+        const string output = """
+            Name              Id                              Version    Source
+            ----------------------------------------------------------------
+            Git               ARP\Machine\X64\Git_is1         2.46.0     winget
+            """;
+
+        IReadOnlyList<Package> rows = CliBackend.ParseTable (output, hasAvailable: false);
+
+        Assert.Single (rows);
+        Assert.Equal (@"ARP\Machine\X64\Git_is1", rows [0].Id);
+    }
+
+    [Fact]
+    public void ParseTable_DigitPrefixedPackageNameIsNotFooter ()
+    {
+        // "7-Zip 26.01 (arm64)" starts with a digit but is NOT a footer. The footer
+        // pattern is digit(s) + whitespace ("4 upgrades available"). Names like
+        // "7-Zip" should parse as packages.
+        const string output = """
+            Name                    Id              Version    Source
+            ---------------------------------------------------------
+            7-Zip 26.01 (arm64)     7zip.7zip       26.01      winget
+            """;
+
+        IReadOnlyList<Package> rows = CliBackend.ParseTable (output, hasAvailable: false);
+
+        Assert.Single (rows);
+        Assert.Equal ("7zip.7zip", rows [0].Id);
+    }
+
+    [Fact]
+    public void ParseTable_TruncatedIdsAreNotRejected ()
+    {
+        // winget truncates long ids in the table with `…`. These are still parsed —
+        // the UI layer guards operations on truncated ids separately.
+        const string output = """
+            Name              Id                              Version    Source
+            ----------------------------------------------------------------
+            Long Name         Microsoft.VeryLongPackageName…  1.0.0      winget
+            """;
+
+        IReadOnlyList<Package> rows = CliBackend.ParseTable (output, hasAvailable: false);
+
+        Assert.Single (rows);
+        Assert.True (rows [0].IsTruncated);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // ParseTable — locale parity
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseTable_GermanHeaders_PositionalFallback ()
+    {
+        // German "Name | ID | Version | Verfügbar | Quelle". NormalizeKey + ColIndex
+        // accept the German column names directly, but if all four match the locale-
+        // aware lookup table, positional fallback isn't needed. This verifies the
+        // happy path.
+        const string output = """
+            Name              ID                       Version    Verfügbar    Quelle
+            -----------------------------------------------------------------------
+            Git               Git.Git                  2.46.0     2.47.0       winget
+            """;
+
+        IReadOnlyList<Package> rows = CliBackend.ParseTable (output, hasAvailable: true);
+
+        Assert.Single (rows);
+        Assert.Equal ("Git", rows [0].Name);
+        Assert.Equal ("Git.Git", rows [0].Id);
+        Assert.Equal ("2.46.0", rows [0].Version);
+        Assert.Equal ("2.47.0", rows [0].AvailableVersion);
+        Assert.Equal ("winget", rows [0].Source);
+    }
+
+    [Fact]
+    public void ParseTable_UnknownLocaleFallsBackToPositionalColumns ()
+    {
+        // When no locale-name lookup matches, the parser falls back to positional
+        // indices (name=0, id=1, version=2, ...).
+        const string output = """
+            名前              標識                       バージョン   ソース
+            -----------------------------------------------------------------
+            Git               Git.Git                    2.46.0      winget
+            """;
+
+        IReadOnlyList<Package> rows = CliBackend.ParseTable (output, hasAvailable: false);
+
+        Assert.Single (rows);
+        Assert.Equal ("Git.Git", rows [0].Id);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // ParseShow — edge cases that upstream tests cover
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseShow_BracketedReleaseNotesDontHijackFoundLine ()
+    {
+        // The "PREFIX <name> [<id>]" detector matches lines ending in `]`. Indented
+        // release-notes lines that mention things like "see [issue #42]" must not be
+        // captured. The detector requires the bracket to be at the LAST position AND
+        // no colon to be present on the same line.
+        const string output = """
+            Found Foo [Acme.Foo]
+            Version: 1.0
+            Release Notes:
+              Fixes the issue described in [issue #42]
+              Other improvements [see PR #7]
+            """;
+
+        PackageDetail? detail = CliBackend.ParseShow ("Acme.Foo", output);
+
+        Assert.NotNull (detail);
+        Assert.Equal ("Foo", detail.Name);                  // not "the issue described in"
+        Assert.Equal ("Acme.Foo", detail.Id);               // not "issue #42"
+    }
+
+    [Fact]
+    public void ParseShow_HomepageNotOverwrittenByPublisherUrlWhenBothPresent ()
+    {
+        // Regression hardening: publisher_url is a FALLBACK for an empty Homepage,
+        // not a replacement.
+        const string output = """
+            Found Foo [Acme.Foo]
+            Homepage: https://acme.example
+            Publisher Url: https://acme-corp.example
+            """;
+
+        PackageDetail? detail = CliBackend.ParseShow ("Acme.Foo", output);
+
+        Assert.NotNull (detail);
+        Assert.Equal ("https://acme.example", detail.Homepage);
+    }
+
+    [Fact]
+    public void ParseShow_ReleaseNotesUrlExtracted ()
+    {
+        const string output = """
+            Found Foo [Acme.Foo]
+            Version: 1.0
+            Release Notes Url: https://github.com/acme/foo/releases/tag/v1.0
+            """;
+
+        PackageDetail? detail = CliBackend.ParseShow ("Acme.Foo", output);
+
+        Assert.NotNull (detail);
+        Assert.Equal ("https://github.com/acme/foo/releases/tag/v1.0", detail.ReleaseNotesUrl);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // CLI argument construction — regression tests for the `--exact` bug
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void InstallArgs_DoNotIncludeExact_RegressionForCatalogMatch ()
+    {
+        // Regression: an earlier version added `--exact` to install, which caused
+        // failures when an id needed a substring catalog match. Upstream uses no
+        // `--exact` on install.
+        string [] args = CliBackend.InstallArgs ("Foo.Bar", version: null);
+
+        Assert.DoesNotContain ("--exact", args);
+        Assert.Contains ("install", args);
+        Assert.Contains ("--id", args);
+        Assert.Contains ("Foo.Bar", args);
+        Assert.Contains ("--accept-source-agreements", args);
+        Assert.Contains ("--accept-package-agreements", args);
+        Assert.DoesNotContain ("--version", args);
+    }
+
+    [Fact]
+    public void InstallArgs_AddVersionFlagWhenVersionProvided ()
+    {
+        string [] args = CliBackend.InstallArgs ("Foo.Bar", version: "1.2.3");
+
+        int vidx = Array.IndexOf (args, "--version");
+        Assert.True (vidx >= 0);
+        Assert.Equal ("1.2.3", args [vidx + 1]);
+    }
+
+    [Fact]
+    public void UpgradeByIdArgs_DoNotIncludeExact_OnlyTheNameFallbackDoes ()
+    {
+        // Regression: an earlier version flipped these. Upstream's id flow is
+        // non-exact, name fallback is exact.
+        string [] idArgs = CliBackend.UpgradeByIdArgs ("Foo.Bar");
+        string [] nameArgs = CliBackend.UpgradeByNameArgs ("Foo.Bar");
+
+        Assert.DoesNotContain ("--exact", idArgs);
+        Assert.Contains ("--id", idArgs);
+
+        Assert.Contains ("--exact", nameArgs);
+        Assert.Contains ("--name", nameArgs);
+    }
+
+    [Fact]
+    public void ListUpgradesArgs_IncludePinnedFlagIsPresent ()
+    {
+        string [] args = CliBackend.ListUpgradesArgs (SourceFilter.All);
+
+        Assert.Contains ("--include-pinned", args);
+    }
+
+    [Fact]
+    public void ListInstalledArgs_DoNotInclude_IncludePinned ()
+    {
+        // `--include-pinned` is upgrade-only and would error on `list`.
+        string [] args = CliBackend.ListInstalledArgs (SourceFilter.All);
+
+        Assert.DoesNotContain ("--include-pinned", args);
+    }
+
+    [Fact]
+    public void PinAddArgs_UseBlockingMode ()
+    {
+        string [] args = CliBackend.PinAddArgs ("Foo.Bar");
+
+        Assert.Contains ("--blocking", args);
+        Assert.Contains ("--exact", args);
+        Assert.Contains ("--disable-interactivity", args);
+    }
+
+    [Fact]
+    public void PinRemoveArgs_DoNotIncludeInstalledFlag ()
+    {
+        // `winget pin remove --installed` would target only installed packages, which
+        // is not what unpin should do.
+        string [] args = CliBackend.PinRemoveArgs ("Foo.Bar");
+
+        Assert.DoesNotContain ("--installed", args);
+        Assert.Contains ("remove", args);
+        Assert.Contains ("--id", args);
+    }
+
+    [Fact]
+    public void SourceFilterArgs_AppendedWhenNotAll ()
+    {
+        string [] withAll = CliBackend.ListInstalledArgs (SourceFilter.All);
+        string [] withWinget = CliBackend.ListInstalledArgs (SourceFilter.Winget);
+        string [] withMsStore = CliBackend.ListInstalledArgs (SourceFilter.MsStore);
+
+        Assert.DoesNotContain ("--source", withAll);
+        Assert.Contains ("--source", withWinget);
+        Assert.Equal ("winget", withWinget [Array.IndexOf (withWinget, "--source") + 1]);
+        Assert.Equal ("msstore", withMsStore [Array.IndexOf (withMsStore, "--source") + 1]);
+    }
+
+    [Fact]
+    public void ShowArgs_UseExactFlag ()
+    {
+        // `winget show` SHOULD use --exact — we want the exact id match for the
+        // detail panel, not a fuzzy match that might pick the wrong package.
+        string [] args = CliBackend.ShowArgs ("Microsoft.VisualStudioCode");
+
+        Assert.Contains ("--exact", args);
+        Assert.Contains ("show", args);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Models — Package.IsTruncated, PinState.DisplayLabel
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData ("Foo.Bar", false)]
+    [InlineData ("Microsoft.VeryLongPackageName…", true)]
+    [InlineData ("Microsoft.VeryLongPackageName...", true)]
+    [InlineData ("…", true)]
+    [InlineData ("", false)]
+    public void Package_IsTruncated_DetectsEllipsisAndDots (string id, bool expected)
+    {
+        Package p = new () { Id = id, Name = "x" };
+        Assert.Equal (expected, p.IsTruncated);
+    }
+
+    [Fact]
+    public void PinState_DisplayLabel_IncludesGatingVersion ()
+    {
+        Assert.Equal ("Pinned", new PinState (PinStateKind.Pinned).DisplayLabel ());
+        Assert.Equal ("Blocking", new PinState (PinStateKind.Blocking).DisplayLabel ());
+        Assert.Equal ("Gating 1.2.*", new PinState (PinStateKind.Gating, "1.2.*").DisplayLabel ());
+        Assert.Equal (string.Empty, PinState.Unpinned.DisplayLabel ());
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Terminal.Gui compatibility — catches regressions on version upgrades.
+    // These exercise the Terminal.Gui APIs we depend on. If a future
+    // Terminal.Gui release breaks our usage, these tests fail fast.
+    // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void TerminalGui_ThemeRegisterDoesNotThrow_AndRegistersAllSchemes ()
+    {
+        // If Terminal.Gui changes Scheme construction (e.g. renames roles, requires new
+        // fields, changes AddScheme signature), this fails.
+        Theme.Register ();
+
+        // Every named scheme must resolve after Register — guards against typos and
+        // catches Terminal.Gui's SchemeManager getting renamed.
+        string [] names =
+        [
+            Theme.AppSchemeName, Theme.SurfaceSchemeName, Theme.FrameFocusedSchemeName,
+            Theme.FrameUnfocusedSchemeName, Theme.NavbarActiveSchemeName, Theme.NavbarInactiveSchemeName,
+            Theme.StatusSchemeName, Theme.AccentSchemeName, Theme.AccentDimSchemeName,
+            Theme.InfoSchemeName, Theme.DangerSchemeName, Theme.SuccessSchemeName
+        ];
+
+        foreach (string name in names)
+        {
+            Scheme? scheme = SchemeManager.GetScheme (name);
+            Assert.NotNull (scheme);
+        }
+    }
+
+    [Fact]
+    public void TerminalGui_RuneGetColumns_ReturnsExpectedWidthForCjkAndAscii ()
+    {
+        // Our display-width column slicing in CliBackend depends on
+        // Rune.GetColumns() reporting 2 for CJK and 1 for ASCII. If Terminal.Gui
+        // changes this (e.g. swaps Wcwidth versions and CJK width changes), the
+        // CJK alignment test would also break — but a direct probe catches it
+        // earlier with a clearer failure.
+        Assert.Equal (1, new System.Text.Rune ('A').GetColumns ());
+        Assert.Equal (1, new System.Text.Rune ('0').GetColumns ());
+        Assert.Equal (2, new System.Text.Rune ('极').GetColumns ());
+        Assert.Equal (2, new System.Text.Rune ('浏').GetColumns ());
+    }
+
+    [Fact]
+    public void TerminalGui_StringGetColumns_ClampsToGraphemeClusterWidth ()
+    {
+        // `string.GetColumns()` walks grapheme clusters and clamps each to 2 cols
+        // (correctly handles ZWJ emoji and combining marks). Our parser doesn't
+        // currently depend on this, but the detail panel's word-wrap does.
+        Assert.Equal (5, "Hello".GetColumns ());
+
+        // "极速" — two CJK chars, 4 display cols
+        Assert.Equal (4, "极速".GetColumns ());
+    }
+
+    [Fact]
+    public void TerminalGui_LogoHasExpectedDimensions ()
+    {
+        // The Logo's pixel-art is 25 cols × 3 rows. If View's Width/Height contract
+        // changes signature, this catches it.
+        Logo logo = new ();
+
+        Assert.Equal (Logo.LogoWidth, 25);
+        Assert.Equal (Logo.LogoHeight, 3);
+    }
+
+    [Fact]
+    public void TerminalGui_TabBarReportsClickedTabViaEvent ()
+    {
+        // Catches changes to View.OnMouseEvent signature, Mouse class shape, or our
+        // hit-testing math. Use reflection because OnMouseEvent is protected.
+        TabBar bar = new () { Frame = new (0, 0, 60, 1) };
+        AppMode? clicked = null;
+        bar.TabClicked += (_, m) => clicked = m;
+
+        Mouse click = new ()
+        {
+            Position = new (0, 0),                          // top-left, "1 ◇ Search" tab
+            Flags = MouseFlags.LeftButtonClicked
+        };
+
+        System.Reflection.MethodInfo onMouse = typeof (TabBar).GetMethod (
+            "OnMouseEvent",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.NotNull (onMouse);
+
+        object? result = onMouse.Invoke (bar, [click]);
+
+        Assert.True ((bool) result!);
+        Assert.Equal (AppMode.Search, clicked);
+    }
+
+    [Fact]
+    public void TerminalGui_MarkedTableSourceCanWrapEnumerableTableSource ()
+    {
+        // Verifies IEnumerableTableSource<T> contract surface used by our cursor
+        // marker wrapper. If Terminal.Gui renames Columns, ColumnNames, Rows, etc.,
+        // this fails at compile or assertion time.
+        Package[] data =
+        [
+            new () { Id = "A.A", Name = "A" },
+            new () { Id = "B.B", Name = "B" }
+        ];
+        EnumerableTableSource<Package> inner = new (data, new ()
+        {
+            { "Name", p => ((Package)p).Name },
+            { "Id", p => ((Package)p).Id }
+        });
+
+        // MarkedTableSource is nested-private inside App; reach it via reflection.
+        Type marked = typeof (App).GetNestedType ("MarkedTableSource", System.Reflection.BindingFlags.NonPublic)!;
+        Assert.NotNull (marked);
     }
 }

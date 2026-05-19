@@ -54,24 +54,48 @@ installed on the target machine — matching the upstream Rust binary's deployme
 
 ### Prerequisites
 
+You must build on a **Windows host** — Native AOT does not support cross-OS publish (a
+Linux/WSL `dotnet publish` for `win-x64` or `win-arm64` will fail with "Cross-OS native
+compilation is not supported"). Architecture cross-targeting *between* the two Windows
+RIDs works fine, so you don't need an ARM machine to produce an arm64 build.
+
+- **Windows host** (any architecture — see arch cross-compile note below)
 - **.NET 10 SDK** ([install](https://dot.net))
 - **Visual Studio Build Tools** with the *Desktop development with C++* workload
-  (the AOT linker uses MSVC's `link.exe` and the Windows SDK)
+  (the AOT linker uses MSVC's `link.exe` and the Windows SDK).
+- To produce an **arm64** binary, also install the **MSVC v143 — VS 2022 C++ ARM64 build
+  tools** component (works from x64 or arm64 hosts).
 
 ### Build the standalone executable
 
+The architecture you build for must match where the binary will run:
+
+| Target Windows machine | Command |
+|------------------------|---------|
+| Intel / AMD x64 (most Windows PCs) | `dotnet publish -c Release -r win-x64` |
+| ARM64 (Surface Pro X, Snapdragon Copilot+ PCs, Windows Dev Kit) | `dotnet publish -c Release -r win-arm64` |
+
 ```powershell
+# x64 (Intel/AMD)
 dotnet publish -c Release -r win-x64
 .\bin\Release\net10.0\win-x64\publish\winget-tui-gui.exe
+
+# arm64
+dotnet publish -c Release -r win-arm64
+.\bin\Release\net10.0\win-arm64\publish\winget-tui-gui.exe
 ```
+
+**Cross-architecture compile** (`x64 → arm64` or `arm64 → x64`) works on Windows as long
+as the matching VS C++ build tools component is installed. Building on Windows arm64
+produces an arm64 exe that runs natively (no x64 emulation).
 
 Copy `winget-tui-gui.exe` anywhere — no other files required.
 
-### Dev iteration (Windows or any host, slower start)
+### Dev iteration on any host (including WSL / macOS / Linux)
 
-For iterating on the code, `dotnet run` is faster than re-publishing AOT each time, but
-requires the .NET 10 runtime on the machine running it. On non-Windows hosts there's no
-`winget` to invoke, so use `--mock`:
+For iterating on the code, `dotnet run` is faster than re-publishing AOT each time, and
+unlike the AOT publish it works on any OS — handy for hacking on the UI from WSL. There's
+no `winget` to invoke on non-Windows hosts, so use `--mock`:
 
 ```bash
 dotnet run                  # Windows: hits real winget
@@ -84,10 +108,32 @@ dotnet run -- --mock        # any host: mock backend, useful for UI development
 dotnet test tests/WingetTui.Tests.csproj
 ```
 
-The xUnit suite under `tests/` covers the parser pipeline — table parsing, ANSI/CR handling,
-display-width column slicing, dedupe, `winget show` parsing including locale variants,
-pin-state precedence, version comparison, and PackageDetail merging. Every test is anchored
-to a real bug found during development; 43 tests, runs in <1 second.
+The xUnit suite under `tests/` covers:
+
+- **Parser pipeline** — table parsing, ANSI/CR handling, display-width column slicing for
+  CJK, dedupe with version-first preference, footer stop and secondary-table parsing,
+  bad-id rejection, store product ids, ARP\Machine\… ids, truncated ids, digit-prefixed
+  package names.
+- **`winget show`** — Found-line extraction, locale-independent prefix (German `Gefunden`),
+  multi-line description continuation, German keys, bracketed release-notes don't hijack
+  the Found-line detector, homepage / publisher_url fallback, release-notes-url
+  extraction.
+- **CLI argument construction** — install/upgrade-by-id don't include `--exact`,
+  upgrade-by-name does, pin add uses `--blocking`, pin remove avoids `--installed`,
+  upgrade includes `--include-pinned`, list doesn't.
+- **Pin state precedence** — Blocking trumps all, Gating(version), `"latest"` is Pinned
+  not Gating, empty inputs degrade to None.
+- **Models** — `Package.IsTruncated`, `PinState.DisplayLabel`,
+  `PackageDetail.MergeContext`, `EnsureDetailHint`.
+- **Version comparison** — numeric vs lexical, longer-prefix-wins, empty handling.
+- **Terminal.Gui compatibility** — `Theme.Register` round-trip, every named scheme
+  resolves, `Rune.GetColumns()` returns 2 for CJK and 1 for ASCII, `string.GetColumns()`
+  walks grapheme clusters correctly, `Logo` instantiates with expected dimensions,
+  `TabBar` reports clicks via `TabClicked`, `MarkedTableSource` nested type still exists.
+  These catch breakages on Terminal.Gui version upgrades.
+
+Every test is anchored to a real bug found during development or a Terminal.Gui surface
+we depend on; **73 tests**, runs in <1 second.
 
 ### Diagnose winget parser issues at runtime
 
