@@ -1,5 +1,8 @@
 # winget-gui-tui
 
+[![CI](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml)
+[![Release](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml)
+
 > ⚠️ **Proof of concept — for evaluation only.** This project exists to **benchmark Terminal.Gui v2 against Ratatui**: feature parity, rendering fidelity, performance, and UX. It is not a finished application, is not on a release track, and is not intended for daily use. Run it on a Windows machine with `winget` only if you understand that **install / uninstall / upgrade actions invoke the real `winget` CLI** and will operate on your real package state.
 
 A C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 reimplementation of [shanselman/winget-tui](https://github.com/shanselman/winget-tui) — a Rust + Ratatui TUI for the Windows Package Manager.
@@ -212,6 +215,19 @@ Things explicitly **out of scope**:
 
 - Configuration file support (`%APPDATA%\winget-tui\config.toml`)
 - Distribution / packaging (Microsoft Store, MSIX, signed releases)
+
+## Releases
+
+Tag-driven via `.github/workflows/release.yml`:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Builds AOT executables for `win-x64` and `win-arm64`, packages each as both a bare `.exe` and a portable `.zip` bundle (exe + README + LICENSE + feature-gaps), computes SHA-256 checksums, and publishes a GitHub Release with all artifacts attached. **Not code-signed** — the upstream Rust version is signed via Azure Trusted Signing; this POC doesn't have that, so first-run SmartScreen warnings on Windows are expected.
+
+Manual dispatch is also available from the Actions tab (provide a `version` input).
 
 ## Related
 

@@ -1,0 +1,176 @@
+name: Release
+
+# Tag-driven release. To cut a release:
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# Builds win-x64 and win-arm64 AOT executables, packages them with the README and
+# LICENSE into zips, computes SHA-256 checksums, and publishes a GitHub Release with
+# all artifacts attached.
+#
+# No code signing — that requires an Azure Trusted Signing account (upstream Rust
+# winget-tui uses one, this POC doesn't). Users will see SmartScreen warnings until
+# the binaries build enough reputation. The SHA256SUMS files let users verify integrity.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (without leading v, e.g. 0.1.0). Required for manual runs.'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            REF="${GITHUB_REF#refs/tags/}"
+            VERSION="${REF#v}"
+          fi
+          # Validate: digits-and-dots with optional prerelease suffix
+          if ! echo "$VERSION" | grep -Eq '^[0-9A-Za-z.+-]+$'; then
+            echo "::error::Invalid version: $VERSION"
+            exit 2
+          fi
+          echo "Version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: AOT publish ${{ matrix.rid }}
+        run: >
+          dotnet publish -c Release
+          -r ${{ matrix.rid }}
+          -o publish/${{ matrix.rid }}
+          /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Package artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $rid = "${{ matrix.rid }}"
+          $bundleName = "winget-tui-gui-$version-$rid"
+
+          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+
+          # Bare-exe drop, named with the architecture so latest links from the
+          # release page don't need to encode the version.
+          Copy-Item "publish/$rid/winget-tui-gui.exe" "dist/winget-tui-gui-$rid.exe"
+
+          # Portable bundle: exe + README + LICENSE + feature-gaps in a zip.
+          New-Item -ItemType Directory -Path "stage/$bundleName" -Force | Out-Null
+          Copy-Item "publish/$rid/winget-tui-gui.exe" "stage/$bundleName/"
+          Copy-Item "README.md"        "stage/$bundleName/"
+          Copy-Item "LICENSE"          "stage/$bundleName/"
+          Copy-Item "feature-gaps.md"  "stage/$bundleName/"
+          Compress-Archive -Path "stage/$bundleName" -DestinationPath "dist/$bundleName.zip" -Force
+
+          # Checksum manifest, alphabetized so diff is stable.
+          $hashes = Get-ChildItem dist/* |
+            Sort-Object Name |
+            ForEach-Object {
+              $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$h  $($_.Name)"
+            }
+          $hashes | Out-File -Encoding ascii "dist/SHA256SUMS-$rid.txt"
+
+          Write-Host "Produced:"
+          Get-ChildItem dist | ForEach-Object { Write-Host "  $($_.Name)  ($([math]::Round($_.Length / 1MB, 2)) MB)" }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: dist/
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -lh artifacts/
+
+      - name: Compose release notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          cat > release-notes.md <<EOF
+          > ⚠️ **Proof of concept — for evaluation only.** This project benchmarks Terminal.Gui v2 against Ratatui. Install / uninstall / upgrade actions invoke the real \`winget\` CLI. See [README](https://github.com/${{ github.repository }}#readme) before running on real systems.
+
+          ## Downloads
+
+          | File | Target |
+          |------|--------|
+          | \`winget-tui-gui-win-x64.exe\` | Windows x64 (Intel/AMD) |
+          | \`winget-tui-gui-win-arm64.exe\` | Windows ARM64 (Surface Pro X, Snapdragon Copilot+) |
+          | \`winget-tui-gui-${VERSION}-win-x64.zip\` | x64 portable bundle (exe + docs) |
+          | \`winget-tui-gui-${VERSION}-win-arm64.zip\` | arm64 portable bundle |
+          | \`SHA256SUMS-*.txt\` | Per-architecture checksums |
+
+          ## Quick start
+
+          Download the \`.exe\` matching your machine's architecture. No installation, no .NET runtime, no other files required.
+
+          \`\`\`powershell
+          # Verify the download (PowerShell)
+          Get-FileHash .\winget-tui-gui-win-x64.exe -Algorithm SHA256
+          # Compare against SHA256SUMS-win-x64.txt
+          \`\`\`
+
+          The first run on Windows may show a SmartScreen warning — these binaries aren't code-signed (POC). Click "More info" → "Run anyway" if you trust the source.
+          EOF
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.exe
+            artifacts/*.zip
+            artifacts/SHA256SUMS-*.txt
+          body_path: release-notes.md
+          generate_release_notes: true
+          append_body: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel in-progress runs on new pushes to the same branch (saves runner time).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test tests/WingetTui.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      # Mock-backend smoke: launch the binary with --mock for a couple seconds and verify
+      # it exits cleanly (no stderr output, no crash). Runs on every CI to catch regressions
+      # that compile cleanly but blow up at startup.
+      - name: Mock-run smoke
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          timeout 2 dotnet bin/Release/net10.0/winget-tui-gui.dll --mock 2>err.log || true
+          if [ -s err.log ]; then
+            echo "::error::Mock run produced stderr output"
+            cat err.log
+            exit 1
+          fi
+
+      - name: Mock-run smoke
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "dotnet" -ArgumentList "bin/Release/net10.0/winget-tui-gui.dll", "--mock" -PassThru -RedirectStandardError err.log
+          Start-Sleep -Seconds 2
+          if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          if ((Get-Item err.log).Length -gt 0) {
+            Write-Host "::error::Mock run produced stderr output"
+            Get-Content err.log
+            exit 1
+          }

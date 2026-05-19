@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # NuGet — track Terminal.Gui develop prereleases and xUnit stable.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      terminal-gui:
+        patterns: ['Terminal.Gui*']
+      xunit:
+        patterns: ['xunit*', 'Microsoft.NET.Test.Sdk']
+
+  # GitHub Actions — keep workflow action versions current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
