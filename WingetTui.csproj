@@ -9,6 +9,20 @@
     <AssemblyName>winget-tui-gui</AssemblyName>
     <Version>0.1.0-poc</Version>
     <Description>A C# / Terminal.Gui implementation of winget-tui — a benchmark/parity POC against shanselman/winget-tui.</Description>
+
+    <!--
+      Native AOT — produces a standalone executable with no .NET runtime dependency,
+      matching the upstream Rust binary's deployment story. `dotnet publish -r <rid>`
+      produces a single self-contained native binary.
+
+      InvariantGlobalization=true drops the ICU data tables; we already use
+      CultureInfo.InvariantCulture for all locale-aware comparisons.
+      StripSymbols=true reduces the final binary size.
+    -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64;linux-arm64</RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
     <!--

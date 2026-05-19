@@ -18,7 +18,7 @@ if (args.Length > 0 && args [0] is "--dump")
     Console.WriteLine ($"Console.OutputEncoding: {Console.OutputEncoding.WebName}");
     Console.WriteLine ();
 
-    (int code, string output) = await WingetCliBackend.RunWithCodeAsync (cmd, CancellationToken.None);
+    (int code, string output) = await CliBackend.RunWithCodeAsync (cmd, CancellationToken.None);
     Console.WriteLine ($"--- exit code: {code}");
     Console.WriteLine ($"--- output length: {output.Length} chars");
     Console.WriteLine ("--- output:");
@@ -30,7 +30,7 @@ if (args.Length > 0 && args [0] is "--dump")
         // Extract the id from --id <X> for the parser's name fallback.
         int idIdx = Array.IndexOf (cmd, "--id");
         string id = idIdx >= 0 && idIdx + 1 < cmd.Length ? cmd [idIdx + 1] : string.Empty;
-        PackageDetail? detail = WingetCliBackend.ParseShowTraced (id, output, Console.Out);
+        PackageDetail? detail = CliBackend.ParseShowTraced (id, output, Console.Out);
         Console.WriteLine ();
 
         if (detail is null)
@@ -52,7 +52,7 @@ if (args.Length > 0 && args [0] is "--dump")
     }
     else
     {
-        IReadOnlyList<Package> rows = WingetCliBackend.ParseTableTraced (output, hasAvailable: cmd [0] == "upgrade", Console.Out);
+        IReadOnlyList<Package> rows = CliBackend.ParseTableTraced (output, hasAvailable: cmd [0] == "upgrade", Console.Out);
         Console.WriteLine ();
         Console.WriteLine ($"--- parsed rows: {rows.Count}");
 
@@ -72,12 +72,12 @@ if (useMock && !args.Any (a => a is "--mock" or "-m"))
     Console.Error.WriteLine ("winget not found on PATH — falling back to mock backend. Run with `winget` available to drive the real CLI.");
 }
 
-IBackend backend = useMock ? new MockBackend () : new WingetCliBackend ();
+IBackend backend = useMock ? new MockBackend () : new CliBackend ();
 
 Theme.Register ();
 
 IApplication app = Application.Create ().Init ();
-WingetTuiWindow window = new (backend);
+App window = new (backend);
 app.Run (window);
 window.Dispose ();
 app.Dispose ();

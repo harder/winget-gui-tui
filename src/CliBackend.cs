@@ -10,7 +10,7 @@ namespace WingetTui;
 /// Shells out to the winget CLI and parses its tabular output.
 /// Mirrors src/cli_backend.rs from shanselman/winget-tui.
 /// </summary>
-public sealed class WingetCliBackend : IBackend
+public sealed partial class CliBackend : IBackend
 {
     private static string SourceArg (SourceFilter f)
         => f switch
@@ -782,14 +782,20 @@ public sealed class WingetCliBackend : IBackend
         return sb.ToString ();
     }
 
-    private static readonly Regex _ansiCsi = new (@"\x1B\[[0-?]*[ -/]*[@-~]", RegexOptions.Compiled);
+    /// <summary>
+    /// Source-generated matcher for ANSI CSI escape sequences. Generated at compile time
+    /// because runtime-compiled Regex (<c>RegexOptions.Compiled</c>) emits IL dynamically,
+    /// which the AOT analyzer rejects.
+    /// </summary>
+    [GeneratedRegex (@"\x1B\[[0-?]*[ -/]*[@-~]")]
+    private static partial Regex AnsiCsiRegex ();
 
     /// <summary>
     /// Strips ANSI CSI escape sequences (color, cursor movement, line erase) from the input.
     /// Required because modern winget may emit progress-bar repaint codes between the header
     /// and the data rows when stdout is piped from a console host that advertises VT support.
     /// </summary>
-    private static string StripAnsi (string s) => _ansiCsi.Replace (s, string.Empty);
+    private static string StripAnsi (string s) => AnsiCsiRegex ().Replace (s, string.Empty);
 
     /// <summary>
     /// Splits output into lines while honoring carriage-return overwrites.

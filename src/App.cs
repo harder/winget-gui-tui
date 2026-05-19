@@ -7,7 +7,7 @@ namespace WingetTui;
 /// Top-level window for the winget-tui clone. Hosts the header (logo + tabs), search/filter input,
 /// 60/40 split between package list and detail panel, and the status bar at the bottom.
 /// </summary>
-public sealed class WingetTuiWindow : Runnable
+public sealed class App : Runnable
 {
     private readonly AppState _state;
     private readonly TabBar _tabBar;
@@ -17,14 +17,14 @@ public sealed class WingetTuiWindow : Runnable
     private readonly FrameView _listFrame;
     private readonly TableView _packageTable;
     private readonly DetailPanel _detailPanel;
-    private readonly WingetStatusBar _statusBar;
+    private readonly StatusBar _statusBar;
     private readonly Label _searchHint;
     private CancellationTokenSource _viewCts = new ();
     private CancellationTokenSource _detailCts = new ();
     private object? _spinnerTimer;
     private bool _initialLoadDone;
 
-    public WingetTuiWindow (IBackend backend)
+    public App (IBackend backend)
     {
         _state = new (backend);
         SchemeName = Theme.AppSchemeName;
@@ -1284,7 +1284,7 @@ public sealed class WingetTuiWindow : Runnable
     /// the row-highlight colors — useful when terminal themes mute the highlight, and for
     /// color-blind accessibility. Mirrors the marker behavior in the upstream Rust app.
     ///
-    /// Nested here because it has no consumer outside <see cref="WingetTuiWindow"/>; pulling
+    /// Nested here because it has no consumer outside <see cref="App"/>; pulling
     /// it out as a public top-level type would just clutter the public surface.
     /// </summary>
     private sealed class MarkedTableSource : IEnumerableTableSource<Package>
