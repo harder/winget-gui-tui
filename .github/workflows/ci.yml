@@ -17,12 +17,10 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build & test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    # Windows only — winget itself is Windows-only and Native AOT can't cross-OS publish
+    # to win-* targets from Linux. Tests CAN run on Linux but only verify pure-data parser
+    # logic, not the full deploy story. Stick to where the real builds happen.
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -43,21 +41,9 @@ jobs:
         run: dotnet test tests/WingetTui.Tests.csproj --no-build --configuration Release --verbosity normal
 
       # Mock-backend smoke: launch the binary with --mock for a couple seconds and verify
-      # it exits cleanly (no stderr output, no crash). Runs on every CI to catch regressions
-      # that compile cleanly but blow up at startup.
+      # it exits cleanly (no stderr output, no crash). Catches regressions that compile
+      # cleanly but blow up at startup.
       - name: Mock-run smoke
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          timeout 2 dotnet bin/Release/net10.0/winget-tui-gui.dll --mock 2>err.log || true
-          if [ -s err.log ]; then
-            echo "::error::Mock run produced stderr output"
-            cat err.log
-            exit 1
-          fi
-
-      - name: Mock-run smoke
-        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           $proc = Start-Process -FilePath "dotnet" -ArgumentList "bin/Release/net10.0/winget-tui-gui.dll", "--mock" -PassThru -RedirectStandardError err.log
