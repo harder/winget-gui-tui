@@ -4,13 +4,15 @@
 
 A C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 reimplementation of [shanselman/winget-tui](https://github.com/shanselman/winget-tui) — a Rust + Ratatui TUI for the Windows Package Manager.
 
-## Origin
+## Origin & attribution
 
-This is a from-scratch port. UI layout, keybindings, color palette, table structure, winget output parsing, dedupe / pin-state / locale handling, and the "Found `<name>` [`<id>`]" detail-header convention all follow the [upstream Rust source](https://github.com/shanselman/winget-tui/tree/main/src) directly. No upstream code was copied; the upstream served as the specification.
+This is a from-scratch C# / Terminal.Gui v2 port of [**shanselman/winget-tui**](https://github.com/shanselman/winget-tui) — Scott Hanselman's Rust + Ratatui TUI for the Windows Package Manager. Copyright © Scott Hanselman, MIT-licensed.
+
+UI layout, keybindings, color palette, table structure, winget output parsing, dedupe / pin-state / locale handling, and the "Found `<name>` [`<id>`]" detail-header convention all follow the [upstream source](https://github.com/shanselman/winget-tui/tree/main/src). **No upstream code was copied** — the upstream served as the behavioral and visual specification.
 
 Differences between the two implementations — including Terminal.Gui feature gaps surfaced while porting — are documented in [feature-gaps.md](feature-gaps.md).
 
-License: MIT (see [LICENSE](LICENSE), upstream attribution in [NOTICE](NOTICE)).
+This port is also MIT-licensed; see [LICENSE](LICENSE).
 
 ## What's in the box
 
@@ -46,49 +48,51 @@ License: MIT (see [LICENSE](LICENSE), upstream attribution in [NOTICE](NOTICE)).
 
 ## Building
 
-This project uses **.NET Native AOT** so the resulting executable is a standalone native binary
-with no .NET runtime dependency — matching the upstream Rust binary's deployment story. A
-single `.exe` (on Windows) or unprefixed binary (on macOS / Linux) is the entire app.
+`winget` itself is Windows-only, so the deployed target is Windows. The build uses **.NET
+Native AOT** to produce a single standalone `.exe` (~10–15 MB) that runs without `dotnet`
+installed on the target machine — matching the upstream Rust binary's deployment story.
 
 ### Prerequisites
 
 - **.NET 10 SDK** ([install](https://dot.net))
-- **Native toolchain** for the target platform:
-  - **Windows:** Visual Studio Build Tools with the "Desktop development with C++" workload, OR Visual Studio with C++ tools installed. The `link.exe` and Windows SDK are required by the AOT linker.
-  - **macOS:** Xcode command-line tools (`xcode-select --install`).
-  - **Linux:** `clang`, `zlib`, and `libssl-dev` (or your distro equivalent). On Ubuntu/Debian: `sudo apt install clang zlib1g-dev libssl-dev`.
+- **Visual Studio Build Tools** with the *Desktop development with C++* workload
+  (the AOT linker uses MSVC's `link.exe` and the Windows SDK)
 
-### Build a standalone executable
+### Build the standalone executable
 
 ```powershell
-# Windows
 dotnet publish -c Release -r win-x64
 .\bin\Release\net10.0\win-x64\publish\winget-tui-gui.exe
 ```
 
-```bash
-# macOS (Intel)         → -r osx-x64
-# macOS (Apple Silicon) → -r osx-arm64
-# Linux x86_64          → -r linux-x64
-# Linux ARM64           → -r linux-arm64
-dotnet publish -c Release -r osx-arm64
-./bin/Release/net10.0/osx-arm64/publish/winget-tui-gui
-```
+Copy `winget-tui-gui.exe` anywhere — no other files required.
 
-The published output is a **single native binary** (~10–15 MB) that runs without `dotnet`
-installed on the target machine. Copy it anywhere — no other files required.
+### Dev iteration (Windows or any host, slower start)
 
-### Development build (faster iteration, requires .NET 10 runtime to run)
+For iterating on the code, `dotnet run` is faster than re-publishing AOT each time, but
+requires the .NET 10 runtime on the machine running it. On non-Windows hosts there's no
+`winget` to invoke, so use `--mock`:
 
 ```bash
-dotnet run                  # builds + runs against the SDK; real winget on Windows
-dotnet run -- --mock        # forces the mock backend (Linux/macOS-friendly)
+dotnet run                  # Windows: hits real winget
+dotnet run -- --mock        # any host: mock backend, useful for UI development
 ```
 
-### Diagnose winget parser issues
+### Run the test suite
 
-The `--dump` mode invokes winget and prints the raw output plus a parser trace. Useful when
-real `winget` output doesn't match what the parser expects:
+```bash
+dotnet test tests/WingetTui.Tests.csproj
+```
+
+The xUnit suite under `tests/` covers the parser pipeline — table parsing, ANSI/CR handling,
+display-width column slicing, dedupe, `winget show` parsing including locale variants,
+pin-state precedence, version comparison, and PackageDetail merging. Every test is anchored
+to a real bug found during development; 43 tests, runs in <1 second.
+
+### Diagnose winget parser issues at runtime
+
+The `--dump` mode invokes winget and prints the raw output plus a parser trace. Useful
+when real `winget` output doesn't match what the parser expects:
 
 ```powershell
 winget-tui-gui.exe --dump search vscode
@@ -134,19 +138,21 @@ winget-gui-tui/
 ├── Program.cs               # Entry point + winget-detection + --dump diagnostic
 ├── WingetTui.csproj         # PackageReference on Terminal.Gui; AOT-configured
 ├── README.md
-├── NOTICE                   # Upstream attribution
 ├── LICENSE                  # MIT
 ├── feature-gaps.md          # Terminal.Gui parity findings vs upstream
-└── src/
-    ├── GlobalUsings.cs      # Centralized using directives
-    ├── Models.cs            # Package, PackageDetail, enums, OpResult
-    ├── Backend.cs           # IBackend interface
-    ├── CliBackend.cs        # Shells out to winget; parses table output
-    ├── MockBackend.cs       # Fake packages so the UI runs anywhere
-    ├── AppState.cs          # Filters, sort, selection, generation counters
-    ├── Theme.cs             # Warm-amber palette + Schemes + pixel-art Logo
-    ├── Ui.cs                # TabBar, StatusBar, DetailPanel, Dialogs (widgets)
-    └── App.cs               # Main Runnable; state coordination; nested MarkedTableSource
+├── src/
+│   ├── GlobalUsings.cs      # Centralized using directives
+│   ├── Models.cs            # Package, PackageDetail, enums, OpResult
+│   ├── Backend.cs           # IBackend interface
+│   ├── CliBackend.cs        # Shells out to winget; parses table output
+│   ├── MockBackend.cs       # Fake packages so the UI runs anywhere
+│   ├── AppState.cs          # Filters, sort, selection, generation counters
+│   ├── Theme.cs             # Warm-amber palette + Schemes + pixel-art Logo
+│   ├── Ui.cs                # TabBar, StatusBar, DetailPanel, Dialogs (widgets)
+│   └── App.cs               # Main Runnable; state coordination; nested MarkedTableSource
+└── tests/
+    ├── WingetTui.Tests.csproj
+    └── ParserTests.cs       # xUnit suite covering the parser pipeline
 ```
 
 9 source files in `src/` matching the upstream Rust project's `src/` layout. ~3,800 LOC total
@@ -160,7 +166,6 @@ Things explicitly **out of scope**:
 
 - Configuration file support (`%APPDATA%\winget-tui\config.toml`)
 - Distribution / packaging (Microsoft Store, MSIX, signed releases)
-- A test suite beyond `--dump`-style smoke checks
 
 ## Related
 

@@ -239,7 +239,7 @@ public sealed partial class CliBackend : IBackend
     /// Map winget's pin-type column text to a <see cref="PinState"/>. Mirrors upstream's
     /// parse_pin_state: prefer Blocking, then Gating(version), then Pinned, in that order.
     /// </summary>
-    private static PinState ParsePinState (string pinType, string pinnedVersion)
+    internal static PinState ParsePinState (string pinType, string pinnedVersion)
     {
         string kind = pinType.ToLowerInvariant ().Trim ();
         string version = pinnedVersion.Trim ();
@@ -540,7 +540,7 @@ public sealed partial class CliBackend : IBackend
     /// with more metadata (non-empty available_version and source). Mirrors upstream's
     /// dedupe_packages + prefer_package.
     /// </summary>
-    private static List<Package> DedupePackages (List<Package> rows)
+    internal static List<Package> DedupePackages (List<Package> rows)
     {
         Dictionary<(string, string), int> index = new ();
         List<Package> deduped = [];
@@ -597,7 +597,7 @@ public sealed partial class CliBackend : IBackend
     /// lexicographically otherwise. Returns &gt;0 if a is newer, &lt;0 if older, 0 if equal.
     /// Mirrors upstream's compare_versions_like in spirit.
     /// </summary>
-    private static int CompareVersionsLike (string a, string b)
+    internal static int CompareVersionsLike (string a, string b)
     {
         if (string.IsNullOrEmpty (a) && string.IsNullOrEmpty (b))
         {
@@ -700,11 +700,20 @@ public sealed partial class CliBackend : IBackend
         return cols;
     }
 
+    /// <summary>
+    /// Finds the first column whose name matches any of the given lookups, with
+    /// LOOKUP-PRIORITY ordering — the earliest lookup that hits any column wins. This is
+    /// important for the pin-list parser, where both "Version" and "Pinned Version" can be
+    /// present in the same header: passing <c>"pinned version"</c> ahead of <c>"version"</c>
+    /// in the lookup list now actually selects the pinned column, not the installed-version
+    /// column. Upstream's <c>find_column_ci</c> iterates columns-first and silently picks
+    /// the wrong one here (their tests don't cover the full pin-table parse).
+    /// </summary>
     private static int ColIndex (List<(string Name, int Start)> cols, params string [] lookups)
     {
-        for (int i = 0; i < cols.Count; i++)
+        foreach (string lookup in lookups)
         {
-            foreach (string lookup in lookups)
+            for (int i = 0; i < cols.Count; i++)
             {
                 if (cols [i].Name.Equals (lookup, StringComparison.OrdinalIgnoreCase))
                 {

@@ -33,4 +33,16 @@
     -->
     <PackageReference Include="Terminal.Gui" Version="2.2.2-develop.3" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Expose internal parser helpers (DedupePackages, ParsePinState, CompareVersionsLike) to the test project. -->
+    <InternalsVisibleTo Include="WingetTui.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The main project's source globs from the repo root. Exclude the test project so its
+         files don't get pulled into the main exe's compile set. -->
+    <Compile Remove="tests/**/*.cs" />
+    <None Remove="tests/**/*" />
+  </ItemGroup>
 </Project>
