@@ -1,0 +1,22 @@
+# Build artifacts
+bin/
+obj/
+publish/
+*.nupkg
+*.snupkg
+
+# Tool output
+*.user
+*.suo
+.vs/
+.vscode/
+
+# Test/diagnostic output
+winget-tui-export.csv
+chrome-dump.txt
+raw.txt
+*.ans.actual
+
+# OS
+.DS_Store
+Thumbs.db

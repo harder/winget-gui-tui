@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>WingetTui</RootNamespace>
+    <AssemblyName>winget-tui-gui</AssemblyName>
+    <Version>0.1.0-poc</Version>
+    <Description>A C# / Terminal.Gui implementation of winget-tui — a benchmark/parity POC against shanselman/winget-tui.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Pinned to the develop pre-release that bundles bracketed-paste support (PR #5277).
+      Bump as the upstream Terminal.Gui develop branch publishes new prereleases; this is
+      intentionally a moving target since the project's purpose is to evaluate parity
+      against current Terminal.Gui behavior.
+    -->
+    <PackageReference Include="Terminal.Gui" Version="2.2.2-develop.3" />
+  </ItemGroup>
+</Project>

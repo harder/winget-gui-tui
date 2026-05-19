@@ -1,0 +1,21 @@
+winget-gui-tui
+==============
+
+This project is a from-scratch C# / Terminal.Gui v2 reimplementation of:
+
+    shanselman/winget-tui
+    https://github.com/shanselman/winget-tui
+    Copyright (c) Scott Hanselman
+    Licensed under the MIT License
+
+The upstream Rust + Ratatui app was used as the behavioral and visual
+specification while writing this port. UI layout, keybindings, color
+palette, status bar, table layout, parsing strategy, dedupe logic, and the
+"Found <name> [<id>]" header convention were all studied directly from
+upstream source.
+
+This is an independent rewrite — no upstream code was copied — but the
+specification debt is acknowledged. See feature-gaps.md for an audit of
+behavioral differences between the two implementations.
+
+This project's own license is MIT (see LICENSE).
