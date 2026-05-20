@@ -160,6 +160,7 @@ public sealed class App : Runnable
         KeyDown += OnKeyDown;
         _packageTable.KeyDown += OnKeyDown;
         _detailPanel.KeyDown += OnKeyDown;
+        _detailPanel.LinkActivated += (_, url) => OpenUrl (url);
         _filterInput.KeyDown += OnFilterKeyDown;
 
         _packageTable.HasFocusChanged += (_, e) => ApplyFocusStyle (_listFrame, e.NewValue);

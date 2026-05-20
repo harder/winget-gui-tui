@@ -7,7 +7,6 @@ A C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 reimplementatio
 This application shows what is possible with a .NET terminal UI. Release binaries are Native AOT and self-contained. You do NOT need the .NET runtime to use them.
 
 [![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=csharp&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
-[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?style=flat&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com)
 [![Terminal.Gui](https://img.shields.io/badge/Terminal.Gui-v2-FF6F00?style=flat&logo=windowsterminal&logoColor=white)](https://github.com/gui-cs/Terminal.Gui)
 [![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20arm64-0078D4?style=flat&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat)](LICENSE)
@@ -50,7 +49,7 @@ This port is also MIT-licensed; see [LICENSE](LICENSE).
 | Navigation while filter input has focus | ✅ |
 | Truncation guard for ops on `…`-suffixed ids | ✅ |
 | Focus-driven border weight: Heavy when focused, Rounded when not | ✅ |
-| Rich-text detail panel: inline span styling, accent label, info-blue URLs | ✅ (via direct drawing - Terminal.Gui doesn't ship a span primitive) |
+| Rich-text detail panel: inline span styling, accent label, info-blue URLs | ✅ (via direct drawing, plus clickable homepage/release links via tiny Markdown rows) |
 | CJK / display-width column slicing | ✅ |
 | Bracketed-paste support on search/version inputs | ✅ (via Terminal.Gui v2 paste pipeline) |
 | Warm-amber theme matching upstream `theme.rs` palette | ✅ |
@@ -136,7 +135,7 @@ The xUnit suite under `tests/` covers:
   These catch breakages on Terminal.Gui version upgrades.
 
 Every test is anchored to a real bug found during development or a Terminal.Gui surface
-we depend on; **88 tests**, runs in <1 second.
+we depend on; **89 tests**, runs in <1 second.
 
 ### Diagnose winget parser issues at runtime
 

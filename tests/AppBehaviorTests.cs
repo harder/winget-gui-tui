@@ -57,6 +57,21 @@ public class AppBehaviorTests
     }
 
     [Fact]
+    public void DetailPanel_SetDetail_CreatesNonFocusableMarkdownViewsForLinkRows ()
+    {
+        DetailPanel panel = CreateDetailPanel ();
+
+        panel.SetDetail (CreateLongDetail (), loading: false);
+
+        Markdown[] links = panel.SubViews.OfType<Markdown> ().ToArray ();
+
+        Assert.Equal (2, links.Length);
+        Assert.All (links, link => Assert.False (link.CanFocus));
+        Assert.Contains (links, link => link.Text.Contains ("[https://example.invalid/home](https://example.invalid/home)", StringComparison.Ordinal));
+        Assert.Contains (links, link => link.Text.Contains ("[https://example.invalid/releases](https://example.invalid/releases)", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AppState_ApplyFilter_SortsVersionsNumericallyAscending ()
     {
         AppState state = new (new MockBackend ())

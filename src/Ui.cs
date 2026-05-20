@@ -15,6 +15,7 @@ public sealed class DetailPanel : FrameView
 {
     private readonly List<List<Span>> _lines = [];
     private readonly List<List<Span>> _wrappedLines = [];
+    private readonly List<MarkdownRow> _markdownRows = [];
     private int _wrappedWidth = -1;
     private string? _emptyMessage = "Select a package to view details";
 
@@ -30,9 +31,11 @@ public sealed class DetailPanel : FrameView
     }
 
     public AppMode Mode { get; set; } = AppMode.Installed;
+    public event EventHandler<string>? LinkActivated;
 
     public void SetDetail (PackageDetail? detail, bool loading)
     {
+        ClearMarkdownRows ();
         _lines.Clear ();
         _wrappedLines.Clear ();
         _wrappedWidth = -1;
@@ -100,12 +103,12 @@ public sealed class DetailPanel : FrameView
         if (!string.IsNullOrEmpty (detail.Homepage))
         {
             AddBlank ();
-            AddKv ("Homepage", detail.Homepage, ValueScheme.Link);
+            AddMarkdownLinkRow ("Homepage", detail.Homepage);
         }
 
         if (!string.IsNullOrEmpty (detail.ReleaseNotesUrl))
         {
-            AddKv ("Release notes", detail.ReleaseNotesUrl, ValueScheme.Link);
+            AddMarkdownLinkRow ("Release notes", detail.ReleaseNotesUrl);
         }
 
         if (!string.IsNullOrEmpty (detail.Description))
@@ -330,6 +333,11 @@ public sealed class DetailPanel : FrameView
 
         if (_emptyMessage is not null)
         {
+            foreach (MarkdownRow markdownRow in _markdownRows)
+            {
+                markdownRow.View.Visible = false;
+            }
+
             _wrappedLines.Add ([]);
             SetContentHeight (1);
             _wrappedWidth = maxWidth;
@@ -337,9 +345,18 @@ public sealed class DetailPanel : FrameView
             return;
         }
 
-        foreach (List<Span> line in _lines)
+        for (int sourceLineIndex = 0; sourceLineIndex < _lines.Count; sourceLineIndex++)
         {
-            _wrappedLines.AddRange (WrapLine (line, maxWidth));
+            List<List<Span>> wrapped = WrapLine (_lines [sourceLineIndex], maxWidth);
+            int startLine = _wrappedLines.Count;
+            _wrappedLines.AddRange (wrapped);
+
+            MarkdownRow? markdownRow = _markdownRows.FirstOrDefault (row => row.SourceLineIndex == sourceLineIndex);
+
+            if (markdownRow is not null)
+            {
+                LayoutMarkdownRow (markdownRow, startLine, wrapped.Count, maxWidth);
+            }
         }
 
         if (_wrappedLines.Count == 0)
@@ -349,6 +366,27 @@ public sealed class DetailPanel : FrameView
 
         SetContentHeight (_wrappedLines.Count);
         _wrappedWidth = maxWidth;
+    }
+
+    private void ClearMarkdownRows ()
+    {
+        foreach (MarkdownRow markdownRow in _markdownRows)
+        {
+            Remove (markdownRow.View);
+        }
+
+        _markdownRows.Clear ();
+    }
+
+    private void LayoutMarkdownRow (MarkdownRow markdownRow, int startLine, int lineCount, int width)
+    {
+        markdownRow.View.X = 1;
+        markdownRow.View.Y = startLine;
+        markdownRow.View.Width = width;
+        markdownRow.View.Height = Math.Max (1, lineCount);
+        markdownRow.View.Visible = true;
+        markdownRow.View.SetNeedsLayout ();
+        markdownRow.View.SetNeedsDraw ();
     }
 
     private static List<List<Span>> WrapLine (IReadOnlyList<Span> spans, int maxWidth)
@@ -492,6 +530,31 @@ public sealed class DetailPanel : FrameView
         ]);
     }
 
+    private void AddMarkdownLinkRow (string label, string url)
+    {
+        string visibleText = $"{label}: {url}";
+        AddSingle (visibleText, Theme.Info, TextStyle.Underline);
+
+        Markdown markdown = new ()
+        {
+            CanFocus = false,
+            X = 1,
+            Y = 0,
+            Width = 1,
+            Height = 1,
+            Text = $"**{label}:** [{url}]({url})",
+            UseThemeBackground = false
+        };
+        markdown.LinkClicked += (_, e) =>
+                                {
+                                    e.Handled = true;
+                                    LinkActivated?.Invoke (this, e.Url);
+                                };
+
+        Add (markdown);
+        _markdownRows.Add (new (markdown, _lines.Count - 1));
+    }
+
     private void AddSingle (string text, Color fg, TextStyle style = TextStyle.None) =>
         _lines.Add ([new Span (text, new (fg, Theme.Surface, style))]);
 
@@ -516,6 +579,7 @@ public sealed class DetailPanel : FrameView
         ]);
 
     private sealed record Span (string Text, Attribute Attr);
+    private sealed record MarkdownRow (Markdown View, int SourceLineIndex);
 }
 
 /// <summary>

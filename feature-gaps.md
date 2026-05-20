@@ -139,9 +139,11 @@ The detail panel needs inline-styled text: accent-bold labels, info-blue underli
 chip-style action keys, normal-text descriptions — all mixed on a single line. Terminal.Gui's
 `Label` and `TextView` render a single attribute across their entire content.
 
-**Workaround:** `Ui.cs § DetailPanel` does direct drawing via `OnDrawingContent` with a
-local `Span` record type holding `(Text, Attribute)`. Walks spans, accumulates display
-width, line-wraps at word boundaries. ~250 LOC that a span primitive would obviate.
+**Workaround:** `Ui.cs § DetailPanel` mostly does direct drawing via `OnDrawingContent`
+with a local `Span` record type holding `(Text, Attribute)`. Walks spans, accumulates
+display width, line-wraps at word boundaries. The homepage / release-notes rows now use
+tiny embedded `Markdown` views to get native hyperlink behavior without rewriting the
+whole panel. A real span primitive would still remove ~250 LOC of custom layout/rendering.
 
 > Suggested: a `Span` / `Markup` value type accepted by `Label.Text` and `TextView.Text`,
 > backed by an `IList<(string Text, Attribute Attr)>`. Ratatui's `Line::from(vec![Span])`
@@ -233,11 +235,7 @@ whether they've regressed.
 
 - ~~**Bracketed paste support**~~ — Terminal.Gui's PR #5277 added the full pipeline.
   See section F above.
-- ~~**Independently scrollable detail pane**~~ — current `DetailPanel` uses
-  `View.Viewport`, `ScrollVertical`, `MouseFlags.WheeledUp/WheeledDown`, and the built-in
-  `VerticalScrollBar`. This turned out to be app wiring, not a missing Terminal.Gui
-  feature.
-
+-
 ## H. Wishlist — items that would have made the port noticeably shorter
 
 Prioritized by LOC saved if Terminal.Gui implemented them:
