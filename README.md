@@ -1,10 +1,11 @@
 # winget-gui-tui
 
-
 > ⚠️ **Proof of concept** This project exists to **benchmark [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 against Ratatui**: feature parity, rendering fidelity, performance, and UX. However it is fully operational: Run it on a Windows machine only if you understand that **install / uninstall / upgrade actions invoke the real `winget` CLI** and will operate on your real package state.
 
-A C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 reimplementation of the wonderful [winget-tui](https://github.com/shanselman/winget-tui) - a Rust + Ratatui based TUI for the [Windows Package Manager (winget)](https://github.com/microsoft/winget-cli).
-This application shows what is possible with a .NET terminal UI. Release binaries are Native AOT and self-contained. You do NOT need the .NET runtime to use them.
+Winget-gui-tui is a C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) reimplementation of the wonderful [winget-tui](https://github.com/shanselman/winget-tui) - a Rust + Ratatui based TUI for the [Windows Package Manager (winget)](https://github.com/microsoft/winget-cli). **Winget-tui **is a beautiful terminal app - you should go download it and try it if you have a Windows machine!
+
+
+This application shows what is possible with a .NET terminal UI, and helps us improve. Release binaries are Native AOT and self-contained. You do NOT need the .NET runtime to use them.
 
 [![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=csharp&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![Terminal.Gui](https://img.shields.io/badge/Terminal.Gui-v2-FF6F00?style=flat&logo=windowsterminal&logoColor=white)](https://github.com/gui-cs/Terminal.Gui)
@@ -18,7 +19,7 @@ This application shows what is possible with a .NET terminal UI. Release binarie
 
 ## Origin & attribution
 
-This is a from-scratch C# / Terminal.Gui port of [**shanselman/winget-tui**](https://github.com/shanselman/winget-tui): Scott Hanselman's Rust + Ratatui TUI for the Windows Package Manager. Winget-tui is copyright © Scott Hanselman, MIT-licensed.
+This is a from-scratch C# / Terminal.Gui port of [**shanselman/winget-tui**](https://github.com/shanselman/winget-tui): Scott Hanselman's Rust + Ratatui TUI for the Windows Package Manager. Winget-tui is copyright © [Scott Hanselman](https://github.com/shanselman), MIT-licensed.
 
 UI layout, keybindings, color palette, table structure, winget output parsing, dedupe / pin-state / locale handling, and the "Found `<name>` [`<id>`]" detail-header convention all follow the [upstream source](https://github.com/shanselman/winget-tui/tree/main/src). **No upstream code was copied** - the upstream served as the behavioral and visual specification.
 
@@ -28,35 +29,35 @@ This port is also MIT-licensed; see [LICENSE](LICENSE).
 
 ## What's in the box
 
-| Area | Status |
-|------|--------|
-| Three-tab UI (Search / Installed / Upgrades) | ✅ |
-| Pixel-art logo + tab bar header | ✅ (3-row half-block art, mouse-clickable tabs) |
-| Package list table (Name, Id, Version, Source / Available) | ✅ |
-| Detail panel: publisher, description, homepage, changelog, license | ✅ |
-| Status bar: source filter, pin filter, hotkey hints, spinner | ✅ |
-| Search mode (`/` or `s`) with deferred backend search | ✅ |
-| Local filter for Installed / Upgrades (auto-cleared on view switch) | ✅ |
-| Source filter cycling (`f`) | ✅ |
-| Pin filter cycling (`P`) | ✅ |
-| Sort cycling (`S`) - None → Name↑↓ → Id↑↓ → Version↑↓ | ✅ |
-| Install / Install-version / Uninstall / Upgrade / Pin | ✅ (no `--exact` to match upstream behavior) |
-| Pin states distinguished: Pinned / Blocking / Gating(version) | ✅ |
-| Batch-select (Space / `a`) and batch upgrade (`U`) | ✅ |
-| Confirm dialog, version-input dialog, help overlay | ✅ |
-| CSV export (`e`) | ✅ |
-| Open homepage (`o`) / changelog (`c`) | ✅ |
-| Refresh (`r`) with cursor-anchor by package id | ✅ |
-| Vim navigation (`j`/`k`) + arrow / PgUp / PgDn / Home / End | ✅ (detail pane scrolls when it has focus) |
-| Navigation while filter input has focus | ✅ |
-| Truncation guard for ops on `…`-suffixed ids | ✅ |
-| Focus-driven border weight: Heavy when focused, Rounded when not | ✅ |
+| Area                                                                      | Status                                                                                |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Three-tab UI (Search / Installed / Upgrades)                              | ✅                                                                                    |
+| Pixel-art logo + tab bar header                                           | ✅ (3-row half-block art, mouse-clickable tabs)                                       |
+| Package list table (Name, Id, Version, Source / Available)                | ✅                                                                                    |
+| Detail panel: publisher, description, homepage, changelog, license        | ✅                                                                                    |
+| Status bar: source filter, pin filter, hotkey hints, spinner              | ✅                                                                                    |
+| Search mode (`/` or `s`) with deferred backend search                     | ✅                                                                                    |
+| Local filter for Installed / Upgrades (auto-cleared on view switch)       | ✅                                                                                    |
+| Source filter cycling (`f`)                                               | ✅                                                                                    |
+| Pin filter cycling (`P`)                                                  | ✅                                                                                    |
+| Sort cycling (`S`) - None → Name↑↓ → Id↑↓ → Version↑↓                     | ✅                                                                                    |
+| Install / Install-version / Uninstall / Upgrade / Pin                     | ✅ (no `--exact` to match upstream behavior)                                          |
+| Pin states distinguished: Pinned / Blocking / Gating(version)             | ✅                                                                                    |
+| Batch-select (Space / `a`) and batch upgrade (`U`)                        | ✅                                                                                    |
+| Confirm dialog, version-input dialog, help overlay                        | ✅                                                                                    |
+| CSV export (`e`)                                                          | ✅                                                                                    |
+| Open homepage (`o`) / changelog (`c`)                                     | ✅                                                                                    |
+| Refresh (`r`) with cursor-anchor by package id                            | ✅                                                                                    |
+| Vim navigation (`j`/`k`) + arrow / PgUp / PgDn / Home / End               | ✅ (detail pane scrolls when it has focus)                                            |
+| Navigation while filter input has focus                                   | ✅                                                                                    |
+| Truncation guard for ops on `…`-suffixed ids                              | ✅                                                                                    |
+| Focus-driven border weight: Heavy when focused, Rounded when not          | ✅                                                                                    |
 | Rich-text detail panel: inline span styling, accent label, info-blue URLs | ✅ (via direct drawing, plus clickable homepage/release links via tiny Markdown rows) |
-| CJK / display-width column slicing | ✅ |
-| Bracketed-paste support on search/version inputs | ✅ (via Terminal.Gui v2 paste pipeline) |
-| Warm-amber theme matching upstream `theme.rs` palette | ✅ |
-| Mock backend for non-Windows hosts | ✅ |
-| Native AOT standalone exe, no .NET runtime needed | ✅ |
+| CJK / display-width column slicing                                        | ✅                                                                                    |
+| Bracketed-paste support on search/version inputs                          | ✅ (via Terminal.Gui v2 paste pipeline)                                               |
+| Warm-amber theme matching upstream `theme.rs` palette                     | ✅                                                                                    |
+| Mock backend for non-Windows hosts                                        | ✅                                                                                    |
+| Native AOT standalone exe, no .NET runtime needed                         | ✅                                                                                    |
 
 ## Building
 
@@ -76,9 +77,9 @@ You must build on a **Windows host** - Native AOT does not support cross-OS publ
 
 The architecture you build for must match where the binary will run:
 
-| Target Windows machine | Command |
-|------------------------|---------|
-| Intel / AMD x64 (most Windows PCs) | `dotnet publish -c Release -r win-x64` |
+| Target Windows machine                                          | Command                                  |
+| --------------------------------------------------------------- | ---------------------------------------- |
+| Intel / AMD x64 (most Windows PCs)                              | `dotnet publish -c Release -r win-x64`   |
 | ARM64 (Surface Pro X, Snapdragon Copilot+ PCs, Windows Dev Kit) | `dotnet publish -c Release -r win-arm64` |
 
 ```powershell
@@ -155,31 +156,31 @@ winget-tui-gui.exe --dump show --id Microsoft.VisualStudioCode --exact
 
 Mirrors `src/handler.rs` in the upstream:
 
-| Key | Action |
-|-----|--------|
-| `/` or `s` | Search (Search tab) / local filter |
-| `↑`/`k`, `↓`/`j` | Move selection, or scroll the detail pane when it has focus |
-| `←`/`→` | Switch tab |
-| `1` / `2` / `3` | Jump to Search / Installed / Upgrades |
-| `Tab` / `Shift+Tab` | Toggle focus between list and detail |
+| Key                             | Action                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `/` or `s`                      | Search (Search tab) / local filter                                             |
+| `↑`/`k`, `↓`/`j`                | Move selection, or scroll the detail pane when it has focus                    |
+| `←`/`→`                         | Switch tab                                                                     |
+| `1` / `2` / `3`                 | Jump to Search / Installed / Upgrades                                          |
+| `Tab` / `Shift+Tab`             | Toggle focus between list and detail                                           |
 | `PgUp` / `PgDn`, `Home` / `End` | Page navigation, or page/start/end scroll in the detail pane when it has focus |
-| `f` | Cycle source filter (All / Winget / MsStore) |
-| `P` | Cycle pin filter |
-| `S` | Cycle sort column / direction |
-| `r` | Refresh (preserves selection by id) |
-| `e` | Export visible list to CSV |
-| `i` | Install |
-| `I` | Install specific version |
-| `u` | Upgrade |
-| `U` | Batch upgrade |
-| `x` | Uninstall |
-| `p` | Pin / unpin |
-| `Space` | Toggle batch select (Upgrades) |
-| `a` | Toggle select-all (Upgrades) |
-| `o` | Open homepage |
-| `c` | Open changelog |
-| `?` | Toggle help |
-| `q` / `Esc` / `Ctrl+C` | Quit |
+| `f`                             | Cycle source filter (All / Winget / MsStore)                                   |
+| `P`                             | Cycle pin filter                                                               |
+| `S`                             | Cycle sort column / direction                                                  |
+| `r`                             | Refresh (preserves selection by id)                                            |
+| `e`                             | Export visible list to CSV                                                     |
+| `i`                             | Install                                                                        |
+| `I`                             | Install specific version                                                       |
+| `u`                             | Upgrade                                                                        |
+| `U`                             | Batch upgrade                                                                  |
+| `x`                             | Uninstall                                                                      |
+| `p`                             | Pin / unpin                                                                    |
+| `Space`                         | Toggle batch select (Upgrades)                                                 |
+| `a`                             | Toggle select-all (Upgrades)                                                   |
+| `o`                             | Open homepage                                                                  |
+| `c`                             | Open changelog                                                                 |
+| `?`                             | Toggle help                                                                    |
+| `q` / `Esc` / `Ctrl+C`          | Quit                                                                           |
 
 ## Architecture
 
