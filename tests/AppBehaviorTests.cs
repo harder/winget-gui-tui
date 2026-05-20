@@ -3,6 +3,60 @@ namespace WingetTui.Tests;
 public class AppBehaviorTests
 {
     [Fact]
+    public void DetailPanel_SetDetail_WithLongContentEnablesVerticalScrolling ()
+    {
+        DetailPanel panel = CreateDetailPanel ();
+
+        panel.SetDetail (CreateLongDetail (), loading: false);
+
+        Assert.True (panel.ViewportSettings.HasFlag (ViewportSettingsFlags.HasVerticalScrollBar));
+        Assert.True (panel.GetContentHeight () > panel.Viewport.Height);
+        Assert.True (panel.VerticalScrollBar.Visible);
+    }
+
+    [Fact]
+    public void DetailPanel_OnMouseWheel_ScrollsViewport ()
+    {
+        DetailPanel panel = CreateDetailPanel ();
+        panel.SetDetail (CreateLongDetail (), loading: false);
+
+        InvokeMouse (panel, MouseFlags.WheeledDown);
+        int afterWheelDown = panel.Viewport.Y;
+
+        InvokeMouse (panel, MouseFlags.WheeledUp);
+
+        Assert.True (afterWheelDown > 0);
+        Assert.Equal (0, panel.Viewport.Y);
+    }
+
+    [Fact]
+    public void DetailPanel_OnKeyDown_ScrollsAndCanReturnHome ()
+    {
+        DetailPanel panel = CreateDetailPanel ();
+        panel.SetDetail (CreateLongDetail (), loading: false);
+
+        InvokeKeyDown (panel, KeyCode.End);
+        int afterEnd = panel.Viewport.Y;
+
+        InvokeKeyDown (panel, KeyCode.Home);
+
+        Assert.True (afterEnd > 0);
+        Assert.Equal (0, panel.Viewport.Y);
+    }
+
+    [Fact]
+    public void DetailPanel_SetDetail_ResetsScrollPositionForNewSelection ()
+    {
+        DetailPanel panel = CreateDetailPanel ();
+        panel.SetDetail (CreateLongDetail (), loading: false);
+        InvokeKeyDown (panel, KeyCode.End);
+
+        panel.SetDetail (CreateLongDetail ("Second package"), loading: false);
+
+        Assert.Equal (0, panel.Viewport.Y);
+    }
+
+    [Fact]
     public void AppState_ApplyFilter_SortsVersionsNumericallyAscending ()
     {
         AppState state = new (new MockBackend ())
@@ -72,5 +126,58 @@ public class AppBehaviorTests
         {
             Assert.Equal (string.Empty, normalized);
         }
+    }
+
+    private static DetailPanel CreateDetailPanel ()
+    {
+        DetailPanel panel = new ()
+        {
+            Frame = new (0, 0, 28, 8),
+            Viewport = new (0, 0, 26, 6)
+        };
+
+        return panel;
+    }
+
+    private static PackageDetail CreateLongDetail (string name = "Long package")
+        => new ()
+        {
+            Id = $"pkg.{name.Replace (" ", string.Empty, StringComparison.OrdinalIgnoreCase)}",
+            Name = name,
+            Version = "1.0.0",
+            Source = "winget",
+            Description = string.Join (
+                ' ',
+                Enumerable.Range (1, 80).Select (i => $"detail-line-{i:00} wraps through the panel to force scrolling")),
+            Homepage = "https://example.invalid/home",
+            ReleaseNotesUrl = "https://example.invalid/releases"
+        };
+
+    private static void InvokeMouse (DetailPanel panel, MouseFlags flags)
+    {
+        Mouse mouse = new ()
+        {
+            Position = new (1, 1),
+            Flags = flags
+        };
+
+        System.Reflection.MethodInfo onMouse = typeof (DetailPanel).GetMethod (
+            "OnMouseEvent",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.NotNull (onMouse);
+        _ = onMouse.Invoke (panel, [mouse]);
+    }
+
+    private static void InvokeKeyDown (DetailPanel panel, KeyCode keyCode)
+    {
+        Key key = new (keyCode);
+
+        System.Reflection.MethodInfo onKeyDown = typeof (DetailPanel).GetMethod (
+            "OnKeyDown",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.NotNull (onKeyDown);
+        _ = onKeyDown.Invoke (panel, [key]);
     }
 }

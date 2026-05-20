@@ -46,7 +46,7 @@ This port is also MIT-licensed; see [LICENSE](LICENSE).
 | CSV export (`e`) | ✅ |
 | Open homepage (`o`) / changelog (`c`) | ✅ |
 | Refresh (`r`) with cursor-anchor by package id | ✅ |
-| Vim navigation (`j`/`k`) + arrow / PgUp / PgDn / Home / End | ✅ |
+| Vim navigation (`j`/`k`) + arrow / PgUp / PgDn / Home / End | ✅ (detail pane scrolls when it has focus) |
 | Navigation while filter input has focus | ✅ |
 | Truncation guard for ops on `…`-suffixed ids | ✅ |
 | Focus-driven border weight: Heavy when focused, Rounded when not | ✅ |
@@ -136,7 +136,7 @@ The xUnit suite under `tests/` covers:
   These catch breakages on Terminal.Gui version upgrades.
 
 Every test is anchored to a real bug found during development or a Terminal.Gui surface
-we depend on; **84 tests**, runs in <1 second.
+we depend on; **88 tests**, runs in <1 second.
 
 ### Diagnose winget parser issues at runtime
 
@@ -157,11 +157,11 @@ Mirrors `src/handler.rs` in the upstream:
 | Key | Action |
 |-----|--------|
 | `/` or `s` | Search (Search tab) / local filter |
-| `↑`/`k`, `↓`/`j` | Move selection |
+| `↑`/`k`, `↓`/`j` | Move selection, or scroll the detail pane when it has focus |
 | `←`/`→` | Switch tab |
 | `1` / `2` / `3` | Jump to Search / Installed / Upgrades |
 | `Tab` / `Shift+Tab` | Toggle focus between list and detail |
-| `PgUp` / `PgDn`, `Home` / `End` | Page navigation |
+| `PgUp` / `PgDn`, `Home` / `End` | Page navigation, or page/start/end scroll in the detail pane when it has focus |
 | `f` | Cycle source filter (All / Winget / MsStore) |
 | `P` | Cycle pin filter |
 | `S` | Cycle sort column / direction |

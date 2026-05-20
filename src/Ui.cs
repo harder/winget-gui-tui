@@ -14,7 +14,8 @@ namespace WingetTui;
 public sealed class DetailPanel : FrameView
 {
     private readonly List<List<Span>> _lines = [];
-    private bool _loading;
+    private readonly List<List<Span>> _wrappedLines = [];
+    private int _wrappedWidth = -1;
     private string? _emptyMessage = "Select a package to view details";
 
     public DetailPanel ()
@@ -23,19 +24,25 @@ public sealed class DetailPanel : FrameView
         BorderStyle = LineStyle.Rounded;
         SchemeName = Theme.FrameUnfocusedSchemeName;
         CanFocus = true;
+        ViewportSettings |= ViewportSettingsFlags.HasVerticalScrollBar;
+        VerticalScrollBar.VisibilityMode = ScrollBarVisibilityMode.Auto;
+        VerticalScrollBar.Increment = 3;
     }
 
     public AppMode Mode { get; set; } = AppMode.Installed;
 
     public void SetDetail (PackageDetail? detail, bool loading)
     {
-        _loading = loading;
         _lines.Clear ();
+        _wrappedLines.Clear ();
+        _wrappedWidth = -1;
+        ScrollToStart ();
 
         if (loading)
         {
             Title = " Package Details (loading…) ";
             _emptyMessage = "Loading…";
+            SetContentHeight (1);
             SetNeedsDraw ();
 
             return;
@@ -46,6 +53,7 @@ public sealed class DetailPanel : FrameView
         if (detail is null)
         {
             _emptyMessage = "No package selected";
+            SetContentHeight (1);
             SetNeedsDraw ();
 
             return;
@@ -147,14 +155,17 @@ public sealed class DetailPanel : FrameView
             AddAction ("c", "Open changelog");
         }
 
+        UpdateWrappedLines ();
         SetNeedsDraw ();
     }
 
     /// <inheritdoc />
     protected override bool OnDrawingContent (DrawContext? context)
     {
-        int width = Viewport.Width;
+        UpdateWrappedLines ();
+
         int height = Viewport.Height;
+        int width = Math.Max (1, Viewport.Width - 2);
 
         if (_emptyMessage is { })
         {
@@ -165,22 +176,237 @@ public sealed class DetailPanel : FrameView
             return true;
         }
 
-        int y = 0;
+        int start = Math.Clamp (Viewport.Y, 0, Math.Max (0, _wrappedLines.Count - 1));
+        int end = Math.Min (start + height, _wrappedLines.Count);
 
-        foreach (List<Span> line in _lines)
+        for (int index = start; index < end; index++)
         {
-            if (y >= height)
-            {
-                break;
-            }
-
-            DrawSpans (line, 1, ref y, width - 2);
+            DrawWrappedLine (_wrappedLines [index], 1, index - start, width);
         }
 
         return true;
     }
 
-    private void DrawSpans (IReadOnlyList<Span> spans, int x0, ref int y, int maxWidth)
+    /// <inheritdoc />
+    protected override bool OnKeyDown (Key key)
+    {
+        switch (key.KeyCode)
+        {
+            case KeyCode.CursorDown:
+                ScrollBy (1);
+                key.Handled = true;
+
+                return true;
+            case KeyCode.CursorUp:
+                ScrollBy (-1);
+                key.Handled = true;
+
+                return true;
+            case KeyCode.PageDown:
+                ScrollPage (1);
+                key.Handled = true;
+
+                return true;
+            case KeyCode.PageUp:
+                ScrollPage (-1);
+                key.Handled = true;
+
+                return true;
+            case KeyCode.Home:
+                ScrollToStart ();
+                key.Handled = true;
+
+                return true;
+            case KeyCode.End:
+                ScrollToEnd ();
+                key.Handled = true;
+
+                return true;
+        }
+
+        if (key.AsRune.Value is var rune and > 0)
+        {
+            char c = (char)rune;
+
+            switch (c)
+            {
+                case 'j':
+                    ScrollBy (1);
+                    key.Handled = true;
+
+                    return true;
+                case 'k':
+                    ScrollBy (-1);
+                    key.Handled = true;
+
+                    return true;
+            }
+        }
+
+        return base.OnKeyDown (key);
+    }
+
+    /// <inheritdoc />
+    protected override bool OnMouseEvent (Mouse mouse)
+    {
+        if (mouse.Flags.HasFlag (MouseFlags.WheeledDown))
+        {
+            SetFocus ();
+            ScrollBy (3);
+            mouse.Handled = true;
+
+            return true;
+        }
+
+        if (mouse.Flags.HasFlag (MouseFlags.WheeledUp))
+        {
+            SetFocus ();
+            ScrollBy (-3);
+            mouse.Handled = true;
+
+            return true;
+        }
+
+        if (mouse.IsSingleClicked == true)
+        {
+            SetFocus ();
+        }
+
+        return base.OnMouseEvent (mouse);
+    }
+
+    public void ScrollBy (int delta)
+    {
+        UpdateWrappedLines ();
+
+        if (delta != 0 && ScrollVertical (delta) == true)
+        {
+            SetNeedsDraw ();
+        }
+    }
+
+    public void ScrollPage (int pages)
+    {
+        int pageSize = Math.Max (1, Viewport.Height);
+        ScrollBy (pages * pageSize);
+    }
+
+    public void ScrollToStart ()
+    {
+        if (Viewport.Y == 0)
+        {
+            return;
+        }
+
+        Viewport = new (Viewport.X, 0, Viewport.Width, Viewport.Height);
+        SetNeedsDraw ();
+    }
+
+    public void ScrollToEnd ()
+    {
+        UpdateWrappedLines ();
+
+        int maxScroll = Math.Max (0, GetContentHeight () - Viewport.Height);
+
+        if (Viewport.Y == maxScroll)
+        {
+            return;
+        }
+
+        Viewport = new (Viewport.X, maxScroll, Viewport.Width, Viewport.Height);
+        SetNeedsDraw ();
+    }
+
+    private void UpdateWrappedLines ()
+    {
+        int maxWidth = Math.Max (1, Viewport.Width - 2);
+
+        if (_wrappedWidth == maxWidth)
+        {
+            return;
+        }
+
+        _wrappedLines.Clear ();
+
+        if (_emptyMessage is not null)
+        {
+            _wrappedLines.Add ([]);
+            SetContentHeight (1);
+            _wrappedWidth = maxWidth;
+
+            return;
+        }
+
+        foreach (List<Span> line in _lines)
+        {
+            _wrappedLines.AddRange (WrapLine (line, maxWidth));
+        }
+
+        if (_wrappedLines.Count == 0)
+        {
+            _wrappedLines.Add ([]);
+        }
+
+        SetContentHeight (_wrappedLines.Count);
+        _wrappedWidth = maxWidth;
+    }
+
+    private static List<List<Span>> WrapLine (IReadOnlyList<Span> spans, int maxWidth)
+    {
+        List<List<Span>> wrapped = [];
+        List<Span> current = [];
+        int currentWidth = 0;
+
+        foreach (Span span in spans)
+        {
+            if (string.IsNullOrEmpty (span.Text))
+            {
+                continue;
+            }
+
+            string [] words = span.Text.Split (' ');
+
+            for (int i = 0; i < words.Length; i++)
+            {
+                string word = words [i];
+                string token = i == 0 ? word : " " + word;
+
+                if (string.IsNullOrEmpty (token))
+                {
+                    continue;
+                }
+
+                int tokenWidth = token.GetColumns ();
+
+                if (currentWidth + tokenWidth > maxWidth && currentWidth > 0)
+                {
+                    wrapped.Add (current);
+                    current = [];
+                    currentWidth = 0;
+
+                    if (token.StartsWith (' '))
+                    {
+                        token = token.TrimStart ();
+                        tokenWidth = token.GetColumns ();
+                    }
+                }
+
+                if (string.IsNullOrEmpty (token))
+                {
+                    continue;
+                }
+
+                current.Add (new (token, span.Attr));
+                currentWidth += tokenWidth;
+            }
+        }
+
+        wrapped.Add (current);
+
+        return wrapped;
+    }
+
+    private void DrawWrappedLine (IReadOnlyList<Span> spans, int x0, int y, int maxWidth)
     {
         int x = x0;
 
@@ -191,35 +417,51 @@ public sealed class DetailPanel : FrameView
                 continue;
             }
 
-            SetAttribute (span.Attr);
-            string [] words = span.Text.Split (' ');
+            string text = span.Text;
+            int width = text.GetColumns ();
 
-            for (int i = 0; i < words.Length; i++)
+            if (x + width > x0 + maxWidth)
             {
-                string word = words [i];
-                string toEmit = i == 0 ? word : " " + word;
-
-                if (x + toEmit.Length > x0 + maxWidth && x > x0)
-                {
-                    y++;
-
-                    if (y >= Viewport.Height)
-                    {
-                        return;
-                    }
-
-                    x = x0;
-                    toEmit = word;
-                    SetAttribute (span.Attr);
-                }
-
-                Move (x, y);
-                AddStr (toEmit);
-                x += toEmit.Length;
+                text = TrimToWidth (text, Math.Max (0, x0 + maxWidth - x));
+                width = text.GetColumns ();
             }
+
+            if (string.IsNullOrEmpty (text))
+            {
+                continue;
+            }
+
+            SetAttribute (span.Attr);
+            Move (x, y);
+            AddStr (text);
+            x += width;
+        }
+    }
+
+    private static string TrimToWidth (string text, int maxWidth)
+    {
+        if (maxWidth <= 0)
+        {
+            return string.Empty;
         }
 
-        y++;
+        StringBuilder builder = new ();
+        int width = 0;
+
+        foreach (Rune rune in text.EnumerateRunes ())
+        {
+            int runeWidth = rune.GetColumns ();
+
+            if (width + runeWidth > maxWidth)
+            {
+                break;
+            }
+
+            builder.Append (rune.ToString ());
+            width += runeWidth;
+        }
+
+        return builder.ToString ();
     }
 
     // ------------------------------------------------------------------------

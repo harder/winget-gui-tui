@@ -233,6 +233,10 @@ whether they've regressed.
 
 - ~~**Bracketed paste support**~~ — Terminal.Gui's PR #5277 added the full pipeline.
   See section F above.
+- ~~**Independently scrollable detail pane**~~ — current `DetailPanel` uses
+  `View.Viewport`, `ScrollVertical`, `MouseFlags.WheeledUp/WheeledDown`, and the built-in
+  `VerticalScrollBar`. This turned out to be app wiring, not a missing Terminal.Gui
+  feature.
 
 ## H. Wishlist — items that would have made the port noticeably shorter
 
