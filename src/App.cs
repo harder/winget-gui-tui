@@ -4,7 +4,7 @@ using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 namespace WingetTui;
 
 /// <summary>
-/// Top-level window for the winget-tui clone. Hosts the header (logo + tabs), search/filter input,
+/// Top-level window. Hosts the header (logo + tabs), search/filter input,
 /// 60/40 split between package list and detail panel, and the status bar at the bottom.
 /// </summary>
 public sealed class App : Runnable

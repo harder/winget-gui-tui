@@ -84,16 +84,6 @@ Free, GitHub-native cryptographic provenance — proves a binary was built from 
 
 Documented for completeness; doesn't solve the prompt-on-download problem on its own.
 
-## My recommendation for this project
-
-**Phase 1 (now):** ship unsigned. Document the `Unblock-File` workaround prominently in the release notes (done in `.github/workflows/release.yml`). Cost: $0. Friction: users see a SmartScreen prompt on first run.
-
-**Phase 2 (if/when this leaves POC status):** apply for **SignPath.io OSS sponsorship**. While that's pending, optionally subscribe to **Azure Trusted Signing** at $10/mo since it matches what upstream does and the setup overhead is mostly identity verification (one-time). The cost over a year is comparable to many side-project hosting bills.
-
-**Phase 3 (only if friction becomes painful):** consider an **EV cert** for instant reputation. Don't start here — the cost/complexity isn't justified for a POC.
-
-GitHub Attestations should be added in Phase 2 alongside whichever signing option you pick — they're free and orthogonal.
-
 ## Workaround for users on the unsigned binary (Phase 1)
 
 PowerShell:
@@ -106,7 +96,7 @@ Or right-click the exe → *Properties* → *Unblock* checkbox → *OK*. After u
 
 For users who download via `gh release download`, this is a one-liner per machine.
 
-## Implementation sketch — Phase 2 (Azure Trusted Signing)
+## Implementation sketch (Azure Trusted Signing)
 
 If you adopt Azure Trusted Signing, the release workflow change is small. Add to `.github/workflows/release.yml` after the AOT publish step, before the package step:
 

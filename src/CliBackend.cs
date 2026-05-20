@@ -874,8 +874,7 @@ public sealed partial class CliBackend : IBackend
     public static PackageDetail? ParseShow (string id, string output) => ParseShowTraced (id, output, TextWriter.Null);
 
     /// <summary>
-    /// Parses `winget show --id X --exact` output. Mirrors the upstream Rust parser's
-    /// approach in src/cli_backend.rs::parse_show_output:
+    /// Parses `winget show --id X --exact` output:
     ///
     /// - The name + id come from a "PREFIX <name> [<id>]" line. We don't match the
     ///   English word "Found": we look for a trailing `]` with a matching `[`, and the

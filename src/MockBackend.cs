@@ -2,7 +2,7 @@
 namespace WingetTui;
 
 /// <summary>
-/// Mock backend used when winget is not available (e.g., running this clone on Linux/macOS for parity testing).
+/// Mock backend used when winget is not available (e.g., running this on Linux/macOS for parity testing).
 /// </summary>
 public sealed class MockBackend : IBackend
 {
