@@ -180,6 +180,62 @@ Mirrors `src/handler.rs` in the upstream:
 | `?` | Toggle help |
 | `q` / `Esc` / `Ctrl+C` | Quit |
 
+## Architecture
+
+```
+                    ┌──────────┐
+                    │   user   │  keyboard, mouse, paste
+                    └─────┬────┘
+                          ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │                            App                              │
+   │  ┌────┐ ┌─────────┐  ┌──────────────┐  ┌─────────────────┐  │
+   │  │Logo│ │ TabBar  │  │ PackageList  │  │  DetailPanel    │  │
+   │  └────┘ └─────────┘  │ (TableView + │  │  (direct-draw   │  │
+   │                      │  MarkedTable │  │   span model)   │  │
+   │  ┌────────────────┐  │  Source)     │  │                 │  │
+   │  │   StatusBar    │  └──────────────┘  └─────────────────┘  │
+   │  └────────────────┘  ┌──────────────────────────────────┐   │
+   │                      │  Modals: HelpDialog, VersionInput│   │
+   │                      └──────────────────────────────────┘   │
+   └────────────────────────────────┬────────────────────────────┘
+                                    │ reads / mutates
+                                    ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │                          AppState                           │
+   │  Mode (Search/Installed/Upgrades)                           │
+   │  Filtered packages, cursor, batch selection                 │
+   │  Source filter, pin filter, sort field/dir, local filter    │
+   │  DetailCache, view_generation, detail_generation            │
+   └────────────────────────────────┬────────────────────────────┘
+                                    │ async (CancellationToken,
+                                    │        generation guard)
+                                    ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │                         IBackend                            │
+   │   Search · ListInstalled · ListUpgrades · Show              │
+   │   Install · Uninstall · Upgrade · Pin · Unpin · ListPins    │
+   └─────────────┬───────────────────────────────────┬───────────┘
+                 ▼                                   ▼
+   ┌──────────────────────────────┐   ┌──────────────────────────┐
+   │  CliBackend  (Windows)       │   │  MockBackend  (--mock)   │
+   │  ParseTable / ParseShow /    │   │  in-memory fixtures so   │
+   │  ParsePins / dedupe /        │   │  the UI runs on any host │
+   │  display-width column slice  │   │  for development         │
+   └──────────────┬───────────────┘   └──────────────────────────┘
+                  ▼
+   ┌─────────────────────────────────────────┐
+   │   winget.exe  (system, Windows-only)    │
+   └─────────────────────────────────────────┘
+```
+
+Three layers, top to bottom: **UI** (`App` owns all the widgets in `Ui.cs` plus the
+list/detail), **state** (`AppState` is the single source of truth for what's filtered
+and selected, with generation counters that invalidate stale async responses), and
+**backend** (`IBackend` interface, two implementations). Async results from the
+backend flow back through `App.Invoke` on the UI thread, where they pass through
+the generation guard before mutating `AppState` and triggering a redraw.
+
 ## Project layout
 
 ```
@@ -189,6 +245,7 @@ winget-gui-tui/
 ├── README.md
 ├── LICENSE                  # MIT
 ├── feature-gaps.md          # Terminal.Gui parity findings vs upstream
+├── code-signing.md          # Code-signing options researched but not adopted (POC)
 ├── src/
 │   ├── GlobalUsings.cs      # Centralized using directives
 │   ├── Models.cs            # Package, PackageDetail, enums, OpResult
@@ -225,9 +282,21 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Builds AOT executables for `win-x64` and `win-arm64`, packages each as both a bare `.exe` and a portable `.zip` bundle (exe + README + LICENSE + feature-gaps), computes SHA-256 checksums, and publishes a GitHub Release with all artifacts attached. **Not code-signed** — the upstream Rust version is signed via Azure Trusted Signing; this POC doesn't have that, so first-run SmartScreen warnings on Windows are expected.
+Builds AOT executables for `win-x64` and `win-arm64`, packages each as both a bare `.exe` and a portable `.zip` bundle (exe + README + LICENSE + feature-gaps), computes SHA-256 checksums, and publishes a GitHub Release with all artifacts attached.
 
 Manual dispatch is also available from the Actions tab (provide a `version` input).
+
+### Code signing
+
+The released binaries are **not code-signed**. The upstream Rust `shanselman/winget-tui` uses Azure Trusted Signing; this POC doesn't have that subscription, so users will see a Microsoft Defender SmartScreen warning on first run. See [code-signing.md](code-signing.md) for the full breakdown of options researched (Azure Trusted Signing, SignPath.io OSS sponsorship, EV cert via Azure Key Vault, GitHub Attestations) and which I'd adopt first if this graduates from POC.
+
+**Workaround for users on the unsigned binary:**
+
+```powershell
+Unblock-File -Path .\winget-tui-gui.exe
+```
+
+Or right-click the exe → *Properties* → check *Unblock* → *OK*. On the first run after unblocking, click *More info → Run anyway* and SmartScreen will remember the decision.
 
 ## Related
 
