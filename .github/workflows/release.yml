@@ -93,12 +93,17 @@ jobs:
           $version = "${{ steps.version.outputs.version }}"
           $rid = "${{ matrix.rid }}"
           $bundleName = "winget-tui-gui-$version-$rid"
+          $exeSuffix = switch ($rid) {
+            "win-x64" { "x64" }
+            "win-arm64" { "arm64" }
+            default { throw "Unexpected RID: $rid" }
+          }
 
           New-Item -ItemType Directory -Path "dist" -Force | Out-Null
 
           # Bare-exe drop, named with the architecture so latest links from the
           # release page don't need to encode the version.
-          Copy-Item "publish/$rid/winget-tui-gui.exe" "dist/winget-tui-gui-$rid.exe"
+          Copy-Item "publish/$rid/winget-tui-gui.exe" "dist/winget-tui-gui-$exeSuffix.exe"
 
           # Portable bundle: exe + README + LICENSE + feature-gaps in a zip.
           New-Item -ItemType Directory -Path "stage/$bundleName" -Force | Out-Null
@@ -149,14 +154,14 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           cat > release-notes.md <<EOF
-          > ⚠️ **Proof of concept — for evaluation only.** This project benchmarks Terminal.Gui v2 against Ratatui. Install / uninstall / upgrade actions invoke the real \`winget\` CLI. See [README](https://github.com/${{ github.repository }}#readme) before running on real systems.
+          > ⚠️ **Proof of concept** Install / uninstall / upgrade actions invoke the real \`winget\` CLI. See [README](https://github.com/${{ github.repository }}#readme) before running on real systems.
 
           ## Downloads
 
           | File | Target |
           |------|--------|
-          | \`winget-tui-gui-win-x64.exe\` | Windows x64 (Intel/AMD) |
-          | \`winget-tui-gui-win-arm64.exe\` | Windows ARM64 (Surface Pro X, Snapdragon Copilot+) |
+          | \`winget-tui-gui-x64.exe\` | Windows x64 (Intel/AMD) |
+          | \`winget-tui-gui-arm64.exe\` | Windows ARM64 (Surface Pro X, Snapdragon Copilot+) |
           | \`winget-tui-gui-${VERSION}-win-x64.zip\` | x64 portable bundle (exe + docs) |
           | \`winget-tui-gui-${VERSION}-win-arm64.zip\` | arm64 portable bundle |
           | \`SHA256SUMS-*.txt\` | Per-architecture checksums |
@@ -167,7 +172,7 @@ jobs:
 
           \`\`\`powershell
           # Verify the download (PowerShell)
-          Get-FileHash .\winget-tui-gui-win-x64.exe -Algorithm SHA256
+          Get-FileHash .\winget-tui-gui-x64.exe -Algorithm SHA256
           # Compare against SHA256SUMS-win-x64.txt
           \`\`\`
 
