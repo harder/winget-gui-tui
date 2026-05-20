@@ -63,24 +63,30 @@ public sealed class AppState
             };
         }
 
-        if (SortField != SortField.None)
+        List<Package> filtered = q.ToList ();
+
+        switch (SortField)
         {
-            IComparer<string> cmp = StringComparer.OrdinalIgnoreCase;
+            case SortField.Name:
+                filtered.Sort ((left, right) => StringComparer.OrdinalIgnoreCase.Compare (left.Name, right.Name));
 
-            Func<Package, string> key = SortField switch
-            {
-                SortField.Name => p => p.Name,
-                SortField.Id => p => p.Id,
-                SortField.Version => p => p.Version,
-                _ => _ => string.Empty
-            };
+                break;
+            case SortField.Id:
+                filtered.Sort ((left, right) => StringComparer.OrdinalIgnoreCase.Compare (left.Id, right.Id));
 
-            q = SortDir == SortDir.Asc
-                    ? q.OrderBy (key, cmp)
-                    : q.OrderByDescending (key, cmp);
+                break;
+            case SortField.Version:
+                filtered.Sort ((left, right) => CliBackend.CompareVersionsLike (left.Version, right.Version));
+
+                break;
         }
 
-        Filtered = q.ToList ();
+        if (SortDir == SortDir.Desc && SortField != SortField.None)
+        {
+            filtered.Reverse ();
+        }
+
+        Filtered = filtered;
     }
 
     public Package? SelectedPackage (int selected)

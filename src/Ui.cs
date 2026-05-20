@@ -592,13 +592,12 @@ public sealed class HelpDialog : Runnable
         SchemeName = Theme.SurfaceSchemeName;
         Arrangement = ViewArrangement.Movable;
 
-        TextView content = new ()
+        Code content = new ()
         {
             X = 1,
             Y = 0,
             Width = Dim.Fill (1),
             Height = Dim.Fill (1),
-            ReadOnly = true,
             Text = HelpText
         };
         Add (content);

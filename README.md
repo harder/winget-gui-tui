@@ -136,7 +136,7 @@ The xUnit suite under `tests/` covers:
   These catch breakages on Terminal.Gui version upgrades.
 
 Every test is anchored to a real bug found during development or a Terminal.Gui surface
-we depend on; **73 tests**, runs in <1 second.
+we depend on; **84 tests**, runs in <1 second.
 
 ### Diagnose winget parser issues at runtime
 

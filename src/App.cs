@@ -322,10 +322,16 @@ public sealed class App : Runnable
 
         if (_state.Filtered.Count == 0)
         {
+            _state.CurrentDetail = null;
+            CancelPendingDetailLoad ();
+            _detailPanel.SetDetail (null, false);
+
             _packageTable.Table = new EnumerableTableSource<EmptyRow> ([], new ()
             {
                 { _state.Mode == AppMode.Upgrades ? "Name" : "Name", _ => string.Empty }
             });
+
+            RefreshStatusBar ();
 
             return;
         }
@@ -471,7 +477,10 @@ public sealed class App : Runnable
     {
         if (_state.Filtered.Count == 0)
         {
+            _state.CurrentDetail = null;
+            CancelPendingDetailLoad ();
             _detailPanel.SetDetail (null, false);
+            RefreshStatusBar ();
 
             return;
         }
@@ -506,6 +515,8 @@ public sealed class App : Runnable
 
     private void OnSelectedRowChanged ()
     {
+        CancelPendingDetailLoad ();
+
         int row = _packageTable.Value?.SelectedCell.Y ?? -1;
 
         if (_packageTable.Table is MarkedTableSource ms && ms.CursorRow != row)
@@ -518,7 +529,9 @@ public sealed class App : Runnable
 
         if (p is null)
         {
+            _state.CurrentDetail = null;
             _detailPanel.SetDetail (null, false);
+            RefreshStatusBar ();
 
             return;
         }
@@ -529,13 +542,12 @@ public sealed class App : Runnable
             cached.EnsureDetailHint ();
             _state.CurrentDetail = cached;
             _detailPanel.SetDetail (cached, false);
+            RefreshStatusBar ();
 
             return;
         }
 
         _detailPanel.SetDetail (null, true);
-        _detailCts.Cancel ();
-        _detailCts = new ();
         CancellationToken ct = _detailCts.Token;
         int gen = _state.BumpDetailGeneration ();
         _state.DetailLoading = true;
@@ -579,8 +591,16 @@ public sealed class App : Runnable
                                            _state.StatusIsError = true;
                                            RefreshStatusBar ();
                                        });
-                      }
-                  }, ct);
+                       }
+                   }, ct);
+    }
+
+    private void CancelPendingDetailLoad ()
+    {
+        _detailCts.Cancel ();
+        _detailCts.Dispose ();
+        _detailCts = new ();
+        _state.DetailLoading = false;
     }
 
     /// <summary>
@@ -1246,7 +1266,7 @@ public sealed class App : Runnable
 
             foreach (Package p in _state.Filtered)
             {
-                sw.WriteLine ($"\"{Escape (p.Name)}\",\"{Escape (p.Id)}\",\"{Escape (p.Version)}\",\"{Escape (p.AvailableVersion ?? string.Empty)}\",\"{Escape (p.Source)}\"");
+                sw.WriteLine ($"\"{EscapeCsvCell (p.Name)}\",\"{EscapeCsvCell (p.Id)}\",\"{EscapeCsvCell (p.Version)}\",\"{EscapeCsvCell (p.AvailableVersion ?? string.Empty)}\",\"{EscapeCsvCell (p.Source)}\"");
             }
 
             _state.StatusMessage = $"Exported {_state.Filtered.Count} rows to {path}";
@@ -1259,15 +1279,23 @@ public sealed class App : Runnable
         }
 
         RefreshStatusBar ();
-
-        static string Escape (string s) => s.Replace ("\"", "\"\"");
     }
 
     private void OpenUrl (string? url)
     {
-        if (string.IsNullOrEmpty (url))
+        if (string.IsNullOrWhiteSpace (url))
         {
             _state.StatusMessage = "No URL available";
+            _state.StatusIsError = false;
+            RefreshStatusBar ();
+
+            return;
+        }
+
+        if (!TryNormalizeOpenableUrl (url, out string normalizedUrl))
+        {
+            _state.StatusMessage = "Blocked non-http(s) URL";
+            _state.StatusIsError = true;
             RefreshStatusBar ();
 
             return;
@@ -1275,9 +1303,10 @@ public sealed class App : Runnable
 
         try
         {
-            ProcessStartInfo psi = new (url) { UseShellExecute = true };
+            ProcessStartInfo psi = new (normalizedUrl) { UseShellExecute = true };
             Process.Start (psi);
-            _state.StatusMessage = $"Opened {url}";
+            _state.StatusMessage = $"Opened {normalizedUrl}";
+            _state.StatusIsError = false;
         }
         catch (Exception ex)
         {
@@ -1286,6 +1315,49 @@ public sealed class App : Runnable
         }
 
         RefreshStatusBar ();
+    }
+
+    internal static string EscapeCsvCell (string value)
+    {
+        string escaped = LooksLikeCsvFormula (value) ? "'" + value : value;
+
+        return escaped.Replace ("\"", "\"\"");
+    }
+
+    internal static bool TryNormalizeOpenableUrl (string? url, out string normalizedUrl)
+    {
+        normalizedUrl = string.Empty;
+
+        if (string.IsNullOrWhiteSpace (url))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate (url.Trim (), UriKind.Absolute, out Uri? parsed))
+        {
+            return false;
+        }
+
+        if (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
+
+        normalizedUrl = parsed.AbsoluteUri;
+
+        return true;
+    }
+
+    private static bool LooksLikeCsvFormula (string value)
+    {
+        if (string.IsNullOrEmpty (value))
+        {
+            return false;
+        }
+
+        string trimmed = value.TrimStart ();
+
+        return trimmed.Length > 0 && trimmed [0] is '=' or '+' or '-' or '@';
     }
 
     private sealed record EmptyRow ();

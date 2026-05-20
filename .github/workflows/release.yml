@@ -29,7 +29,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  workflow-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Lint GitHub Actions workflows
+        uses: rhysd/actionlint@v1
+
   build:
+    needs: workflow-lint
     name: Build ${{ matrix.rid }}
     runs-on: windows-latest
     strategy:
@@ -40,13 +50,17 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
           dotnet-quality: 'preview'
+          cache: true
+          cache-dependency-path: |
+            WingetTui.csproj
+            tests/WingetTui.Tests.csproj
 
       - name: Resolve version
         id: version
@@ -107,7 +121,7 @@ jobs:
           Get-ChildItem dist | ForEach-Object { Write-Host "  $($_.Name)  ($([math]::Round($_.Length / 1MB, 2)) MB)" }
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.rid }}
           path: dist/
@@ -119,10 +133,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           path: artifacts/
           merge-multiple: true
