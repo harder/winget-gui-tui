@@ -14,6 +14,8 @@ This application shows what is possible with a .NET terminal UI. Release binarie
 [![CI](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml)
 [![Release](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml)
 
+![winget-gui-tui screenshot](img/winget-gui-tui.png)
+
 ## Origin & attribution
 
 This is a from-scratch C# / Terminal.Gui port of [**shanselman/winget-tui**](https://github.com/shanselman/winget-tui): Scott Hanselman's Rust + Ratatui TUI for the Windows Package Manager. Winget-tui is copyright © Scott Hanselman, MIT-licensed.
