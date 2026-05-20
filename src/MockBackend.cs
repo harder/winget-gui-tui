@@ -110,8 +110,7 @@ public sealed class MockBackend : IBackend
             PinState = _pins.GetValueOrDefault (p.Id, PinState.Unpinned),
             Publisher = $"{p.Name.Split (' ') [0]} Team",
             Description = $"{p.Name} is a placeholder description for the mock backend. "
-                          + "When running on Windows with winget installed, real manifest data is fetched here. "
-                          + "This clone exists to drive parity testing between the Rust winget-tui and a Terminal.Gui port.",
+                          + "When running on Windows with winget installed, real manifest data is fetched here. ",
             Homepage = $"https://example.invalid/{p.Id}",
             License = "MIT",
             ReleaseNotesUrl = $"https://example.invalid/{p.Id}/releases"

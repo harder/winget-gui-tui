@@ -1294,7 +1294,7 @@ public sealed class App : Runnable
     /// Wraps an <see cref="EnumerableTableSource{Package}"/> and prepends a column-0 cursor
     /// marker (<c>●</c> on the cursor row, blank otherwise). A redundant visual cue alongside
     /// the row-highlight colors — useful when terminal themes mute the highlight, and for
-    /// color-blind accessibility. Mirrors the marker behavior in the upstream Rust app.
+    /// color-blind accessibility.
     ///
     /// Nested here because it has no consumer outside <see cref="App"/>; pulling
     /// it out as a public top-level type would just clutter the public surface.

@@ -9,8 +9,7 @@ name: Release
 # LICENSE into zips, computes SHA-256 checksums, and publishes a GitHub Release with
 # all artifacts attached.
 #
-# No code signing — that requires an Azure Trusted Signing account (upstream Rust
-# winget-tui uses one, this POC doesn't). Users will see SmartScreen warnings until
+# No code signing — that requires an Azure Trusted Signing account. Users will see SmartScreen warnings until
 # the binaries build enough reputation. The SHA256SUMS files let users verify integrity.
 
 on:

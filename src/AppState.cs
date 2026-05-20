@@ -2,7 +2,7 @@
 namespace WingetTui;
 
 /// <summary>
-/// In-memory state for the running app. Mirrors src/app.rs in the Rust original.
+/// In-memory state for the running app.
 /// </summary>
 public sealed class AppState
 {

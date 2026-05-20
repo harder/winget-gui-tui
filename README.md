@@ -261,9 +261,6 @@ winget-gui-tui/
     └── ParserTests.cs       # xUnit suite covering the parser pipeline
 ```
 
-9 source files in `src/` matching the upstream Rust project's `src/` layout. ~3,800 LOC total
-(upstream is ~3,500 logical lines across 9 `.rs` files).
-
 ## Status & roadmap
 
 This is a POC. Things known to be unfinished or different from upstream are listed in [feature-gaps.md](feature-gaps.md). Terminal.Gui is under active development and this application will be upated periodically to reflect improvements, fixes, and new features in that library. PRs that close parity gaps are welcome.

@@ -231,17 +231,6 @@ These gaps were on this list at some point during development but are now closed
 preserved here as a changelog so anyone bumping Terminal.Gui versions can sanity-check
 whether they've regressed.
 
-- ~~**Vim navigation (`j`/`k`)**~~ — Implemented in `App.OnKeyDown` via `MoveListCursor`.
-  Not a Terminal.Gui gap; was a port TODO.
-- ~~**Pin states collapsed to single kind**~~ — `CliBackend.ParsePinState` and
-  `ParsePins` now distinguish `Pinned` / `Blocking` / `Gating(version)` per upstream's
-  precedence rules.
-- ~~**Secondary pinned-packages table after upgrade footer**~~ —
-  `CliBackend.ParseOneTable` is now called a second time on the lines after the footer
-  to capture the secondary table. Rows from both are merged via `DedupePackages`.
-- ~~**Detail panel goes blank for packages winget can't `show`**~~ — `App.BuildStubDetail`
-  + `PackageDetail.EnsureDetailHint` synthesize a "Additional metadata not available"
-  description from the list-row context.
 - ~~**Bracketed paste support**~~ — Terminal.Gui's PR #5277 added the full pipeline.
   See section F above.
 
