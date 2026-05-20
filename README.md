@@ -228,8 +228,8 @@ Mirrors `src/handler.rs` in the upstream:
    └─────────────────────────────────────────┘
 ```
 
-Three layers, top to bottom: **UI** (`App` owns all the widgets in `Ui.cs` plus the
-list/detail), **state** (`AppState` is the single source of truth for what's filtered
+Three layers, top to bottom: **UI** (`App` owns the widgets from `Ui.cs` plus
+`DetailPanel`), **state** (`AppState` is the single source of truth for what's filtered
 and selected, with generation counters that invalidate stale async responses), and
 **backend** (`IBackend` interface, two implementations). Async results from the
 backend flow back through `App.Invoke` on the UI thread, where they pass through
@@ -253,7 +253,8 @@ winget-gui-tui/
 │   ├── MockBackend.cs       # Fake packages so the UI runs anywhere
 │   ├── AppState.cs          # Filters, sort, selection, generation counters
 │   ├── Theme.cs             # Warm-amber palette + Schemes + pixel-art Logo
-│   ├── Ui.cs                # TabBar, StatusBar, DetailPanel, Dialogs (widgets)
+│   ├── DetailPanel.cs       # Scrollable package detail view with inline rich-text rendering
+│   ├── Ui.cs                # TabBar, StatusBar, Dialogs (widgets)
 │   └── App.cs               # Main Runnable; state coordination; nested MarkedTableSource
 └── tests/
     ├── WingetTui.Tests.csproj

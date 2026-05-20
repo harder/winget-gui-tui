@@ -9,8 +9,8 @@ namespace WingetTui;
 /// </summary>
 public sealed class App : Runnable
 {
-    /// <summary>Total rows for the header chrome — logo (3 rows) + tab bar (1 row).</summary>
-    private const int HeaderHeight = Logo.LogoHeight + 1;
+    /// <summary>Total rows reserved by the logo/header chrome before search or main content.</summary>
+    private const int HeaderHeight = Logo.LogoHeight;
 
     private readonly AppState _state;
     private readonly TabBar _tabBar;
@@ -33,20 +33,14 @@ public sealed class App : Runnable
         SchemeName = Theme.AppSchemeName;
         Title = "winget-tui (Terminal.Gui port)";
 
-        // --- Header layout ---
-        //
-        //   Row 0–2:   pixel-art Logo "WINGET GUI TUI" (50 cols wide)
-        //   Row 3:     TabBar (1 row, full width)
-        //   Row 4:     Search/filter input (hidden until '/' pressed)
-        //   Row 4+:    List + Detail panel (shifts down 1 when search shown)
-        //
-        // The logo is too wide (50 cols) to share a row with the tabs on a typical 80-col
-        // terminal, so the tabs moved below it. HeaderHeight = LogoHeight + 1 (tab row).
+        // --- Header: logo on the left, tabs to the right, vertically centered against the
+        // 3-row logo. Search/filter lives immediately below the logo header and temporarily
+        // pushes the list/detail panes down one row while active. ---
         _logo = new () { X = 1, Y = 0 };
-        _tabBar = new () { X = 1, Y = Logo.LogoHeight, Width = Dim.Fill (1) };
+        _tabBar = new () { X = Pos.Right (_logo) + 4, Y = 1, Width = Dim.Fill (1) };
 
-        // --- Search / filter input (hidden until needed). Lives one row below the tab
-        // bar; the list shifts down another row when search is shown. ---
+        // --- Search / filter input (hidden until needed). Lives immediately below the
+        // header chrome; the list shifts down another row when search is shown. ---
         _searchHint = new ()
         {
             X = 1,

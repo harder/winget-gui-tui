@@ -139,7 +139,7 @@ The detail panel needs inline-styled text: accent-bold labels, info-blue underli
 chip-style action keys, normal-text descriptions — all mixed on a single line. Terminal.Gui's
 `Label` and `TextView` render a single attribute across their entire content.
 
-**Workaround:** `Ui.cs § DetailPanel` mostly does direct drawing via `OnDrawingContent`
+**Workaround:** `DetailPanel.cs` mostly does direct drawing via `OnDrawingContent`
 with a local `Span` record type holding `(Text, Attribute)`. Walks spans, accumulates
 display width, line-wraps at word boundaries. The homepage / release-notes rows now use
 tiny embedded `Markdown` views to get native hyperlink behavior without rewriting the

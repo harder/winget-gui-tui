@@ -72,6 +72,24 @@ public class AppBehaviorTests
     }
 
     [Fact]
+    public void App_WideWindow_PlacesTabsToTheRightOfTheLogo ()
+    {
+        App app = new (new MockBackend ())
+        {
+            Frame = new (0, 0, 120, 40)
+        };
+        LayoutView (app, new (120, 40));
+
+        Logo logo = GetPrivateField<Logo> (app, "_logo");
+        TabBar tabBar = GetPrivateField<TabBar> (app, "_tabBar");
+        FrameView listFrame = GetPrivateField<FrameView> (app, "_listFrame");
+
+        Assert.Equal (1, tabBar.Frame.Y);
+        Assert.True (tabBar.Frame.X >= logo.Frame.X + logo.Frame.Width);
+        Assert.Equal (Logo.LogoHeight, listFrame.Frame.Y);
+    }
+
+    [Fact]
     public void AppState_ApplyFilter_SortsVersionsNumericallyAscending ()
     {
         AppState state = new (new MockBackend ())
@@ -194,5 +212,26 @@ public class AppBehaviorTests
 
         Assert.NotNull (onKeyDown);
         _ = onKeyDown.Invoke (panel, [key]);
+    }
+
+    private static T GetPrivateField<T> (object instance, string fieldName) where T : class
+    {
+        System.Reflection.FieldInfo field = instance.GetType ().GetField (
+            fieldName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        return Assert.IsType<T> (field.GetValue (instance));
+    }
+
+    private static void LayoutView (View view, System.Drawing.Size size)
+    {
+        view.SetRelativeLayout (size);
+
+        System.Reflection.MethodInfo layoutSubViews = typeof (View).GetMethod (
+            "LayoutSubViews",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.NotNull (layoutSubViews);
+        _ = layoutSubViews.Invoke (view, []);
     }
 }
