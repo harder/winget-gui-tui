@@ -1,5 +1,11 @@
 # winget-gui-tui
 
+[![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=csharp&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?style=flat&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com)
+[![Terminal.Gui](https://img.shields.io/badge/Terminal.Gui-v2-FF6F00?style=flat&logo=windowsterminal&logoColor=white)](https://github.com/gui-cs/Terminal.Gui)
+[![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20arm64-0078D4?style=flat&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat)](LICENSE)
+
 [![CI](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml)
 [![Release](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml)
 

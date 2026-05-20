@@ -146,14 +146,18 @@ public static class Theme
 /// </summary>
 public sealed class Logo : View
 {
+    // "WINGET GUI TUI" rendered on a 50×6 pixel grid (compressed to 3 text rows via
+    // upper/lower half-blocks). Each letter occupies 1–5 columns with a 1-column gap
+    // between letters and a 2-column gap between words. Mirrors upstream's logo
+    // construction in src/theme.rs, extended to spell out the full project name.
     private static readonly string [] _lines =
     [
-        "█   █ █ █▄ █ ▄▀▀▀ █▀▀ ▀█▀",
-        "█ █ █ █ █ ▀█ █ ▀█ █▀   █ ",
-        " ▀ ▀  ▀ ▀  ▀  ▀▀▀ ▀▀▀  ▀ "
+        "█   █ █ █▄ █ ▄▀▀▀ █▀▀ ▀█▀  ▄▀▀▀ █  █ █  ▀█▀ █  █ █",
+        "█ █ █ █ █ ▀█ █ ▀█ █▀   █   █ ▀█ █  █ █   █  █  █ █",
+        " ▀ ▀  ▀ ▀  ▀  ▀▀▀ ▀▀▀  ▀    ▀▀▀  ▀▀  ▀    ▀   ▀▀  ▀"
     ];
 
-    public const int LogoWidth = 25;
+    public const int LogoWidth = 50;
     public const int LogoHeight = 3;
 
     public Logo ()

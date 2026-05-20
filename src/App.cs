@@ -9,6 +9,9 @@ namespace WingetTui;
 /// </summary>
 public sealed class App : Runnable
 {
+    /// <summary>Total rows for the header chrome — logo (3 rows) + tab bar (1 row).</summary>
+    private const int HeaderHeight = Logo.LogoHeight + 1;
+
     private readonly AppState _state;
     private readonly TabBar _tabBar;
     private readonly Logo _logo;
@@ -30,15 +33,24 @@ public sealed class App : Runnable
         SchemeName = Theme.AppSchemeName;
         Title = "winget-tui (Terminal.Gui port)";
 
-        // --- Header: logo on left, tabs to the right, vertically centered against the 3-row logo ---
+        // --- Header layout ---
+        //
+        //   Row 0–2:   pixel-art Logo "WINGET GUI TUI" (50 cols wide)
+        //   Row 3:     TabBar (1 row, full width)
+        //   Row 4:     Search/filter input (hidden until '/' pressed)
+        //   Row 4+:    List + Detail panel (shifts down 1 when search shown)
+        //
+        // The logo is too wide (50 cols) to share a row with the tabs on a typical 80-col
+        // terminal, so the tabs moved below it. HeaderHeight = LogoHeight + 1 (tab row).
         _logo = new () { X = 1, Y = 0 };
-        _tabBar = new () { X = Pos.Right (_logo) + 4, Y = 1, Width = Dim.Fill (1) };
+        _tabBar = new () { X = 1, Y = Logo.LogoHeight, Width = Dim.Fill (1) };
 
-        // --- Search / filter input (hidden until needed). Lives at Y=LogoHeight; list shifts down when shown. ---
+        // --- Search / filter input (hidden until needed). Lives one row below the tab
+        // bar; the list shifts down another row when search is shown. ---
         _searchHint = new ()
         {
             X = 1,
-            Y = Logo.LogoHeight,
+            Y = HeaderHeight,
             Width = 2,
             Text = "/ ",
             SchemeName = Theme.AccentSchemeName,
@@ -47,7 +59,7 @@ public sealed class App : Runnable
         _filterInput = new ()
         {
             X = Pos.Right (_searchHint),
-            Y = Logo.LogoHeight,
+            Y = HeaderHeight,
             Width = Dim.Fill (1),
             Title = "to search…",
             Visible = false
@@ -57,7 +69,7 @@ public sealed class App : Runnable
         _listFrame = new ()
         {
             X = 0,
-            Y = Logo.LogoHeight,
+            Y = HeaderHeight,
             Width = Dim.Percent (60),
             Height = Dim.Fill (1),
             Title = " Installed ",
@@ -81,7 +93,7 @@ public sealed class App : Runnable
         _detailPanel = new ()
         {
             X = Pos.Right (_listFrame),
-            Y = Logo.LogoHeight,
+            Y = HeaderHeight,
             Width = Dim.Fill (),
             Height = Dim.Fill (1)
         };
@@ -933,8 +945,8 @@ public sealed class App : Runnable
         _filterInput.Visible = true;
         _filterInput.Title = _state.Mode == AppMode.Search ? "to search…" : "to filter…";
         _filterInput.Text = _state.Mode == AppMode.Search ? _state.SearchQuery : _state.LocalFilter;
-        _listFrame.Y = Logo.LogoHeight + 1;
-        _detailPanel.Y = Logo.LogoHeight + 1;
+        _listFrame.Y = HeaderHeight + 1;
+        _detailPanel.Y = HeaderHeight + 1;
         _filterInput.SetFocus ();
         RefreshStatusBar ();
     }
@@ -944,8 +956,8 @@ public sealed class App : Runnable
         _state.InputMode = InputMode.Normal;
         _searchHint.Visible = false;
         _filterInput.Visible = false;
-        _listFrame.Y = Logo.LogoHeight;
-        _detailPanel.Y = Logo.LogoHeight;
+        _listFrame.Y = HeaderHeight;
+        _detailPanel.Y = HeaderHeight;
         _packageTable.SetFocus ();
         RefreshStatusBar ();
     }

@@ -941,8 +941,8 @@ public class ParserTests
         // changes signature, this catches it.
         Logo logo = new ();
 
-        Assert.Equal (Logo.LogoWidth, 25);
-        Assert.Equal (Logo.LogoHeight, 3);
+        Assert.Equal (50, Logo.LogoWidth);   // "WINGET GUI TUI" — 50 cols of half-block art
+        Assert.Equal (3, Logo.LogoHeight);   // 6 pixel rows compressed into 3 text rows
     }
 
     [Fact]
