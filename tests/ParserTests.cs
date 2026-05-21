@@ -1,4 +1,4 @@
-namespace WingetTui.Tests;
+namespace WingetTuiSharp.Tests;
 
 /// <summary>
 /// Unit tests for the CliBackend parsing pipeline. Equivalent to the
@@ -941,8 +941,26 @@ public class ParserTests
         // changes signature, this catches it.
         Logo logo = new ();
 
-        Assert.Equal (50, Logo.LogoWidth);   // "WINGET GUI TUI" — 50 cols of half-block art
+        Assert.Equal (43, Logo.LogoWidth);   // "WINGET TUI #" — 43 cols of half-block art
         Assert.Equal (3, Logo.LogoHeight);   // 6 pixel rows compressed into 3 text rows
+    }
+
+    [Fact]
+    public void TerminalGui_LogoRendersWingetTuiHashWordmark ()
+    {
+        System.Reflection.FieldInfo linesField = typeof (Logo).GetField (
+            "_lines",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        string [] lines = Assert.IsType<string []> (linesField.GetValue (null));
+
+        Assert.Equal (
+            [
+                "█   █ █ █▄ █ ▄▀▀▀ █▀▀ ▀█▀  ▀█▀ █  █ █  █ █",
+                "█ █ █ █ █ ▀█ █ ▀█ █▀   █    █  █  █ █  ▀▀▀",
+                " ▀ ▀ ▀ ▀  ▀  ▀▀▀ ▀▀▀  ▀    ▀   ▀▀  ▀  █ █"
+            ],
+            lines);
     }
 
     [Fact]

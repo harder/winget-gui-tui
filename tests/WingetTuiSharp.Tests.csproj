@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>WingetTui.Tests</RootNamespace>
+    <RootNamespace>WingetTuiSharp.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -19,6 +19,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WingetTui.csproj" />
+    <ProjectReference Include="..\WingetTuiSharp.csproj" />
   </ItemGroup>
 </Project>

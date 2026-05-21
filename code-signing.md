@@ -7,7 +7,7 @@
 
 ## What the problem actually is
 
-When a Windows user downloads `winget-tui-gui.exe`:
+When a Windows user downloads `winget-tui-sharp.exe`:
 
 1. **Mark-of-the-Web (MOTW)** — the browser tags the file as "from the internet." On first run, Windows blocks it with a SmartScreen prompt: *"Windows protected your PC."* The user has to click *More info → Run anyway*. This is the prompt we want to eliminate.
 
@@ -89,7 +89,7 @@ Documented for completeness; doesn't solve the prompt-on-download problem on its
 PowerShell:
 
 ```powershell
-Unblock-File -Path .\winget-tui-gui.exe
+Unblock-File -Path .\winget-tui-sharp.exe
 ```
 
 Or right-click the exe → *Properties* → *Unblock* checkbox → *OK*. After unblocking, SmartScreen will still warn on the very first run; click *More info → Run anyway* once and it remembers.

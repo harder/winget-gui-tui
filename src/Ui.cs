@@ -1,6 +1,6 @@
 // Widget views and modal dialogs
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Custom tab bar widget that renders 3 mutually-exclusive tabs with mouse hit-testing.

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 
 /// <summary>

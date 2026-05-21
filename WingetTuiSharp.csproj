@@ -5,8 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>WingetTui</RootNamespace>
-    <AssemblyName>winget-tui-gui</AssemblyName>
+    <RootNamespace>WingetTuiSharp</RootNamespace>
+    <AssemblyName>winget-tui-sharp</AssemblyName>
     <Version>0.1.1</Version>
     <Description>A C# / Terminal.Gui implementation of winget-tui (a terminal UI for winget).</Description>
     <PublishAot>true</PublishAot>
@@ -31,7 +31,7 @@
 
   <ItemGroup>
     <!-- Expose internal parser helpers (DedupePackages, ParsePinState, CompareVersionsLike) to the test project. -->
-    <InternalsVisibleTo Include="WingetTui.Tests" />
+    <InternalsVisibleTo Include="WingetTuiSharp.Tests" />
   </ItemGroup>
 
   <ItemGroup>

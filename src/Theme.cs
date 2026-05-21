@@ -1,4 +1,4 @@
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Warm-amber color palette and the registered <see cref="Scheme"/>s for the app, plus the
@@ -19,18 +19,18 @@ public static class Theme
     public static readonly Color Info = new (97, 175, 239);
     public static readonly Color Selection = new (198, 120, 221);
 
-    public const string AppSchemeName = "WingetTui.App";
-    public const string SurfaceSchemeName = "WingetTui.Surface";
-    public const string FrameFocusedSchemeName = "WingetTui.FrameFocused";
-    public const string FrameUnfocusedSchemeName = "WingetTui.FrameUnfocused";
-    public const string NavbarActiveSchemeName = "WingetTui.NavbarActive";
-    public const string NavbarInactiveSchemeName = "WingetTui.NavbarInactive";
-    public const string StatusSchemeName = "WingetTui.Status";
-    public const string AccentSchemeName = "WingetTui.Accent";
-    public const string AccentDimSchemeName = "WingetTui.AccentDim";
-    public const string InfoSchemeName = "WingetTui.Info";
-    public const string DangerSchemeName = "WingetTui.Danger";
-    public const string SuccessSchemeName = "WingetTui.Success";
+    public const string AppSchemeName = "WingetTuiSharp.App";
+    public const string SurfaceSchemeName = "WingetTuiSharp.Surface";
+    public const string FrameFocusedSchemeName = "WingetTuiSharp.FrameFocused";
+    public const string FrameUnfocusedSchemeName = "WingetTuiSharp.FrameUnfocused";
+    public const string NavbarActiveSchemeName = "WingetTuiSharp.NavbarActive";
+    public const string NavbarInactiveSchemeName = "WingetTuiSharp.NavbarInactive";
+    public const string StatusSchemeName = "WingetTuiSharp.Status";
+    public const string AccentSchemeName = "WingetTuiSharp.Accent";
+    public const string AccentDimSchemeName = "WingetTuiSharp.AccentDim";
+    public const string InfoSchemeName = "WingetTuiSharp.Info";
+    public const string DangerSchemeName = "WingetTuiSharp.Danger";
+    public const string SuccessSchemeName = "WingetTuiSharp.Success";
 
     public static void Register ()
     {
@@ -146,17 +146,17 @@ public static class Theme
 /// </summary>
 public sealed class Logo : View
 {
-    // "WINGET GUI TUI" rendered on a 50×6 pixel grid (compressed to 3 text rows via
+    // "WINGET TUI #" rendered on a 43×6 pixel grid (compressed to 3 text rows via
     // upper/lower half-blocks). Each letter occupies 1–5 columns with a 1-column gap
     // between letters and a 2-column gap between words.
     private static readonly string [] _lines =
     [
-        "█   █ █ █▄ █ ▄▀▀▀ █▀▀ ▀█▀  ▄▀▀▀ █  █ █  ▀█▀ █  █ █",
-        "█ █ █ █ █ ▀█ █ ▀█ █▀   █   █ ▀█ █  █ █   █  █  █ █",
-        " ▀ ▀  ▀ ▀  ▀  ▀▀▀ ▀▀▀  ▀    ▀▀▀  ▀▀  ▀   ▀   ▀▀  ▀"
+        "█   █ █ █▄ █ ▄▀▀▀ █▀▀ ▀█▀  ▀█▀ █  █ █  █ █",
+        "█ █ █ █ █ ▀█ █ ▀█ █▀   █    █  █  █ █  ▀▀▀",
+        " ▀ ▀ ▀ ▀  ▀  ▀▀▀ ▀▀▀  ▀    ▀   ▀▀  ▀  █ █"
     ];
 
-    public const int LogoWidth = 50;
+    public const int LogoWidth = 43;
     public const int LogoHeight = 3;
 
     public Logo ()

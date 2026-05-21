@@ -1,5 +1,5 @@
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 public interface IBackend
 {

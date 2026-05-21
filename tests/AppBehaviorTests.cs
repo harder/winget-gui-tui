@@ -1,4 +1,4 @@
-namespace WingetTui.Tests;
+namespace WingetTuiSharp.Tests;
 
 public class AppBehaviorTests
 {

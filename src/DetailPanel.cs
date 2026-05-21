@@ -1,4 +1,4 @@
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Right-side package detail panel. Renders the package's metadata with inline styles —

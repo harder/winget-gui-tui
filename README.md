@@ -1,8 +1,8 @@
-# winget-gui-tui
+# winget-tui-sharp
 
 > ⚠️ **Proof of concept** This project exists to **benchmark [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 against Ratatui**: feature parity, rendering fidelity, performance, and UX. However it is fully operational: Run it on a Windows machine only if you understand that **install / uninstall / upgrade actions invoke the real `winget` CLI** and will operate on your real package state.
 
-Winget-gui-tui is a C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) reimplementation of the wonderful [winget-tui](https://github.com/shanselman/winget-tui) - a Rust + Ratatui based TUI for the [Windows Package Manager (winget)](https://github.com/microsoft/winget-cli). **Winget-tui** is a beautiful terminal app - you should go download it and try it if you have a Windows machine!
+Winget-tui-sharp is a C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) reimplementation of the wonderful [winget-tui](https://github.com/shanselman/winget-tui) - a Rust + Ratatui based TUI for the [Windows Package Manager (winget)](https://github.com/microsoft/winget-cli). **Winget-tui** is a beautiful terminal app - you should go download it and try it if you have a Windows machine!
 
 
 This application shows what is possible with a .NET terminal UI, and helps us improve. Release binaries are Native AOT and self-contained. You do NOT need the .NET runtime to use them.
@@ -12,10 +12,10 @@ This application shows what is possible with a .NET terminal UI, and helps us im
 [![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20arm64-0078D4?style=flat&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat)](LICENSE)
 
-[![CI](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/ci.yml)
-[![Release](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml/badge.svg)](https://github.com/harder/winget-gui-tui/actions/workflows/release.yml)
+[![CI](https://github.com/harder/winget-tui-sharp/actions/workflows/ci.yml/badge.svg)](https://github.com/harder/winget-tui-sharp/actions/workflows/ci.yml)
+[![Release](https://github.com/harder/winget-tui-sharp/actions/workflows/release.yml/badge.svg)](https://github.com/harder/winget-tui-sharp/actions/workflows/release.yml)
 
-![winget-gui-tui screenshot](img/winget-gui-tui.png)
+![winget-tui-sharp screenshot](img/winget-tui-sharp.png)
 
 ## Origin & attribution
 
@@ -85,18 +85,18 @@ The architecture you build for must match where the binary will run:
 ```powershell
 # x64 (Intel/AMD)
 dotnet publish -c Release -r win-x64
-.\bin\Release\net10.0\win-x64\publish\winget-tui-gui.exe
+.\bin\Release\net10.0\win-x64\publish\winget-tui-sharp.exe
 
 # arm64
 dotnet publish -c Release -r win-arm64
-.\bin\Release\net10.0\win-arm64\publish\winget-tui-gui.exe
+.\bin\Release\net10.0\win-arm64\publish\winget-tui-sharp.exe
 ```
 
 **Cross-architecture compile** (`x64 → arm64` or `arm64 → x64`) works on Windows as long
 as the matching VS C++ build tools component is installed. Building on Windows arm64
 produces an arm64 exe that runs natively (no x64 emulation).
 
-Copy `winget-tui-gui.exe` anywhere, no other files required.
+Copy `winget-tui-sharp.exe` anywhere, no other files required.
 
 ### Dev iteration on any host (including WSL / macOS / Linux)
 
@@ -110,7 +110,7 @@ dotnet run -- --mock        # any host: mock backend, useful for UI development
 ### Run the test suite
 
 ```bash
-dotnet test tests/WingetTui.Tests.csproj
+dotnet test tests/WingetTuiSharp.Tests.csproj
 ```
 
 The xUnit suite under `tests/` covers:
@@ -146,10 +146,10 @@ The `--dump` mode invokes winget and prints the raw output plus a parser trace. 
 when real `winget` output doesn't match what the parser expects:
 
 ```powershell
-winget-tui-gui.exe --dump search vscode
-winget-tui-gui.exe --dump list
-winget-tui-gui.exe --dump upgrade
-winget-tui-gui.exe --dump show --id Microsoft.VisualStudioCode --exact
+winget-tui-sharp.exe --dump search vscode
+winget-tui-sharp.exe --dump list
+winget-tui-sharp.exe --dump upgrade
+winget-tui-sharp.exe --dump show --id Microsoft.VisualStudioCode --exact
 ```
 
 ## Keybindings
@@ -241,9 +241,9 @@ the generation guard before mutating `AppState` and triggering a redraw.
 ## Project layout
 
 ```
-winget-gui-tui/
+winget-tui-sharp/
 ├── Program.cs               # Entry point + winget-detection + --dump diagnostic
-├── WingetTui.csproj         # PackageReference on Terminal.Gui; AOT-configured
+├── WingetTuiSharp.csproj         # PackageReference on Terminal.Gui; AOT-configured
 ├── README.md
 ├── LICENSE                  # MIT
 ├── feature-gaps.md          # Terminal.Gui parity findings vs upstream
@@ -260,7 +260,7 @@ winget-gui-tui/
 │   ├── Ui.cs                # TabBar, StatusBar, Dialogs (widgets)
 │   └── App.cs               # Main Runnable; state coordination; nested MarkedTableSource
 └── tests/
-    ├── WingetTui.Tests.csproj
+    ├── WingetTuiSharp.Tests.csproj
     └── ParserTests.cs       # xUnit suite covering the parser pipeline
 ```
 
@@ -292,7 +292,7 @@ The released binaries are **not code-signed** yet. This POC doesn't have a Azure
 **Workaround for users on the unsigned binary:**
 
 ```powershell
-Unblock-File -Path .\winget-tui-gui.exe
+Unblock-File -Path .\winget-tui-sharp.exe
 ```
 
 Or right-click the exe → *Properties* → check *Unblock* → *OK*. On the first run after unblocking, click *More info → Run anyway* and SmartScreen will remember the decision.

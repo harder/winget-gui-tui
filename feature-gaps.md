@@ -5,7 +5,7 @@ building this winget-tui port. Each entry is the kind of thing that should drive
 Terminal.Gui issue, PR, or wishlist discussion — not a complaint about Terminal.Gui being
 incomplete. Where this port works around a gap, the workaround is noted.
 
-The list is anchored to **Terminal.Gui 2.2.2-develop.16** (the version in `WingetTui.csproj`).
+The list is anchored to **Terminal.Gui 2.2.2-develop.16** (the version in `WingetTuiSharp.csproj`).
 If Terminal.Gui upgrades close any of these, please send a PR removing the entry — and
 ideally adding a test in `tests/ParserTests.cs § Terminal.Gui compatibility` that would
 have caught a regression.

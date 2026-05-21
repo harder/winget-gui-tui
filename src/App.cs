@@ -1,7 +1,7 @@
 using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Top-level window. Hosts the header (logo + tabs), search/filter input,
