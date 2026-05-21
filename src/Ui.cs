@@ -174,15 +174,12 @@ public sealed class StatusBar : View
 
         // Hotkey hints right-aligned. Reserve at least 8 columns for the status message; if the
         // hints don't fit in the remaining width, drop lowest-priority pairs from the left first.
-        string hints = ComposeHints ();
+        // Pairs are separated by a dim "│" glyph for visual grouping.
+        string [] hintPairs = ComposeHintPairs ();
         int hintsAvailable = Viewport.Width - x0 - 8;
-
-        if (hints.Length > hintsAvailable)
-        {
-            hints = TruncateHints (hints, hintsAvailable);
-        }
-
-        int hintsStart = Math.Max (x0 + 1, Viewport.Width - hints.Length);
+        (string [] visiblePairs, bool elided) = TruncateHintPairs (hintPairs, hintsAvailable);
+        int hintsWidth = HintsWidth (visiblePairs, elided);
+        int hintsStart = Math.Max (x0 + 1, Viewport.Width - hintsWidth);
 
         // Status message between filters and hints
         string msg = Message;
@@ -209,52 +206,94 @@ public sealed class StatusBar : View
         Move (x0, 0);
         AddStr (msg);
 
-        SetAttribute (new (Theme.TextPrimary, Theme.Surface));
-        Move (hintsStart, 0);
-        AddStr (hints);
+        DrawHintPairs (hintsStart, visiblePairs, elided);
 
         return true;
     }
 
-    private static string TruncateHints (string hints, int available)
+    private void DrawHintPairs (int xStart, string [] pairs, bool elided)
     {
-        if (available <= 1)
+        Attribute primary = new (Theme.TextPrimary, Theme.Surface);
+        Attribute dim = new (Theme.TextSecondary, Theme.Surface);
+        int x = xStart;
+
+        if (elided)
         {
-            return string.Empty;
+            SetAttribute (dim);
+            Move (x, 0);
+            AddStr ("… ");
+            x += 2;
         }
 
-        // Hints are space-separated "key label" pairs joined by "  ". Drop pairs from the
-        // left (lowest priority first; the right end has q Quit / ? Help) until they fit.
-        // Then prepend "…" so the reader knows hints were elided.
-        string [] pairs = hints.Split (new [] { "  " }, StringSplitOptions.None);
-        int start = 0;
-
-        while (start < pairs.Length - 1)
+        for (int i = 0; i < pairs.Length; i++)
         {
-            string candidate = "… " + string.Join ("  ", pairs [start..]);
+            SetAttribute (primary);
+            Move (x, 0);
+            AddStr (pairs [i]);
+            x += pairs [i].Length;
 
-            if (candidate.Length <= available)
+            if (i < pairs.Length - 1)
             {
-                return candidate;
+                SetAttribute (dim);
+                Move (x, 0);
+                AddStr (" │ ");
+                x += 3;
             }
-
-            start++;
         }
-
-        // Even the last pair is too long; hard-cut.
-        return available > 1 ? hints [^Math.Max (1, available - 1)..].Insert (0, "…") : "…";
     }
 
-    private string ComposeHints ()
+    private static int HintsWidth (string [] pairs, bool elided)
+    {
+        if (pairs.Length == 0)
+        {
+            return elided ? 1 : 0;
+        }
+
+        int width = (elided ? 2 : 0) + pairs.Sum (p => p.Length) + 3 * (pairs.Length - 1);
+
+        return width;
+    }
+
+    /// <summary>
+    /// Drop hint pairs from the left (lowest priority first; the right end has q Quit / ? Help)
+    /// until what's left fits in <paramref name="available"/> columns including the " │ "
+    /// separators between pairs and a leading "… " when anything was elided.
+    /// </summary>
+    private static (string [] Pairs, bool Elided) TruncateHintPairs (string [] pairs, int available)
+    {
+        if (pairs.Length == 0 || available <= 0)
+        {
+            return (Array.Empty<string> (), false);
+        }
+
+        if (HintsWidth (pairs, false) <= available)
+        {
+            return (pairs, false);
+        }
+
+        for (int start = 1; start < pairs.Length; start++)
+        {
+            string [] candidate = pairs [start..];
+
+            if (HintsWidth (candidate, true) <= available)
+            {
+                return (candidate, true);
+            }
+        }
+
+        return (Array.Empty<string> (), true);
+    }
+
+    private string [] ComposeHintPairs ()
     {
         return InputMode switch
         {
-            InputMode.Search => "Esc Cancel  Enter Search",
-            InputMode.LocalFilter => "Esc Clear  Enter Done  Bksp Del",
-            InputMode.VersionInput => "Esc Cancel  Enter Confirm  Bksp Del",
+            InputMode.Search => ["Esc Cancel", "Enter Search"],
+            InputMode.LocalFilter => ["Esc Clear", "Enter Done", "Bksp Del"],
+            InputMode.VersionInput => ["Esc Cancel", "Enter Confirm", "Bksp Del"],
             _ => Mode == AppMode.Search
-                     ? "/ Search  f Source  r Refresh  e Export  ? Help  q Quit"
-                     : "/ Filter  f Source  p Pin  P Pins  r Refresh  e Export  ? Help  q Quit"
+                     ? ["/ Search", "f Source", "r Refresh", "e Export", "? Help", "q Quit"]
+                     : ["/ Filter", "f Source", "p Pin", "P Pins", "r Refresh", "e Export", "? Help", "q Quit"]
         };
     }
 }
