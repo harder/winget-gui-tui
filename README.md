@@ -46,6 +46,8 @@ You do **not** need .NET to run `winget-tui-sharp`.
 
 ```powershell
 .\winget-tui-sharp-x64.exe
+
+.\winget-tui-sharp-arm64.exe
 ```
 
 ### Code signing
@@ -55,7 +57,7 @@ The released binaries are **not code-signed** yet. This POC doesn't have a Azure
 **Workaround for users on the unsigned binary:**
 
 ```powershell
-Unblock-File -Path .\winget-tui-sharp.exe
+Unblock-File -Path .\winget-tui-sharp-x64.exe
 ```
 
 Or right-click the exe → *Properties* → check *Unblock* → *OK*. On the first run after unblocking, click *More info → Run anyway* and SmartScreen will remember the decision.
