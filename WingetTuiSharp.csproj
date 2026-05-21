@@ -7,7 +7,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>WingetTuiSharp</RootNamespace>
     <AssemblyName>winget-tui-sharp</AssemblyName>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Description>A C# / Terminal.Gui implementation of winget-tui (a terminal UI for winget).</Description>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
