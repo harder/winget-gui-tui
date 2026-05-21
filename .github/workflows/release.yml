@@ -59,8 +59,8 @@ jobs:
           dotnet-quality: 'preview'
           cache: true
           cache-dependency-path: |
-            WingetTui.csproj
-            tests/WingetTui.Tests.csproj
+            WingetTuiSharp.csproj
+            tests/WingetTuiSharp.Tests.csproj
 
       - name: Resolve version
         id: version
@@ -92,7 +92,7 @@ jobs:
         run: |
           $version = "${{ steps.version.outputs.version }}"
           $rid = "${{ matrix.rid }}"
-          $bundleName = "winget-tui-gui-$version-$rid"
+          $bundleName = "winget-tui-sharp-$version-$rid"
           $exeSuffix = switch ($rid) {
             "win-x64" { "x64" }
             "win-arm64" { "arm64" }
@@ -103,11 +103,11 @@ jobs:
 
           # Bare-exe drop, named with the architecture so latest links from the
           # release page don't need to encode the version.
-          Copy-Item "publish/$rid/winget-tui-gui.exe" "dist/winget-tui-gui-$exeSuffix.exe"
+          Copy-Item "publish/$rid/winget-tui-sharp.exe" "dist/winget-tui-sharp-$exeSuffix.exe"
 
           # Portable bundle: exe + README + LICENSE + feature-gaps in a zip.
           New-Item -ItemType Directory -Path "stage/$bundleName" -Force | Out-Null
-          Copy-Item "publish/$rid/winget-tui-gui.exe" "stage/$bundleName/"
+          Copy-Item "publish/$rid/winget-tui-sharp.exe" "stage/$bundleName/"
           Copy-Item "README.md"        "stage/$bundleName/"
           Copy-Item "LICENSE"          "stage/$bundleName/"
           Copy-Item "feature-gaps.md"  "stage/$bundleName/"
@@ -160,10 +160,10 @@ jobs:
 
           | File | Target |
           |------|--------|
-          | \`winget-tui-gui-x64.exe\` | Windows x64 (Intel/AMD) |
-          | \`winget-tui-gui-arm64.exe\` | Windows ARM64 (Surface Pro X, Snapdragon Copilot+) |
-          | \`winget-tui-gui-${VERSION}-win-x64.zip\` | x64 portable bundle (exe + docs) |
-          | \`winget-tui-gui-${VERSION}-win-arm64.zip\` | arm64 portable bundle |
+          | \`winget-tui-sharp-x64.exe\` | Windows x64 (Intel/AMD) |
+          | \`winget-tui-sharp-arm64.exe\` | Windows ARM64 (Surface Pro X, Snapdragon Copilot+) |
+          | \`winget-tui-sharp-${VERSION}-win-x64.zip\` | x64 portable bundle (exe + docs) |
+          | \`winget-tui-sharp-${VERSION}-win-arm64.zip\` | arm64 portable bundle |
           | \`SHA256SUMS-*.txt\` | Per-architecture checksums |
 
           ## Quick start
@@ -172,7 +172,7 @@ jobs:
 
           \`\`\`powershell
           # Verify the download (PowerShell)
-          Get-FileHash .\winget-tui-gui-x64.exe -Algorithm SHA256
+          Get-FileHash .\winget-tui-sharp-x64.exe -Algorithm SHA256
           # Compare against SHA256SUMS-win-x64.txt
           \`\`\`
 

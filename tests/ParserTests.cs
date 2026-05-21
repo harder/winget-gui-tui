@@ -1,4 +1,4 @@
-namespace WingetTui.Tests;
+namespace WingetTuiSharp.Tests;
 
 /// <summary>
 /// Unit tests for the CliBackend parsing pipeline. Equivalent to the
@@ -937,12 +937,32 @@ public class ParserTests
     [Fact]
     public void TerminalGui_LogoHasExpectedDimensions ()
     {
-        // The Logo's pixel-art is 25 cols × 3 rows. If View's Width/Height contract
+        // The Logo's wordmark is 51 cols × 5 rows. If View's Width/Height contract
         // changes signature, this catches it.
         Logo logo = new ();
 
-        Assert.Equal (50, Logo.LogoWidth);   // "WINGET GUI TUI" — 50 cols of half-block art
-        Assert.Equal (3, Logo.LogoHeight);   // 6 pixel rows compressed into 3 text rows
+        Assert.Equal (51, Logo.LogoWidth);   // "WINGET TUI #" — 51 cols of 5-row block art
+        Assert.Equal (5, Logo.LogoHeight);
+    }
+
+    [Fact]
+    public void TerminalGui_LogoRendersWingetTuiHashWordmark ()
+    {
+        System.Reflection.FieldInfo linesField = typeof (Logo).GetField (
+            "_lines",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        string [] lines = Assert.IsType<string []> (linesField.GetValue (null));
+
+        Assert.Equal (
+            [
+                "█   █ ███ █  █  ██  ████ ████  ████ █  █ ███   █ █ ",
+                "█   █  █  ██ █ █    █     █     █   █  █  █   █████",
+                "█ █ █  █  █ ██ █ ██ ███   █     █   █  █  █    █ █ ",
+                "██ ██  █  █  █ █  █ █     █     █   █  █  █   █████",
+                "█   █ ███ █  █  ███ ████  █     █    ██  ███   █ █ "
+            ],
+            lines);
     }
 
     [Fact]

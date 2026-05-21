@@ -5,9 +5,9 @@ This is a **proof-of-concept** project benchmarking Terminal.Gui v2 against Rata
 ## Dev setup
 
 ```bash
-git clone https://github.com/harder/winget-gui-tui
-cd winget-gui-tui
-dotnet test tests/WingetTui.Tests.csproj   # 73 tests, <1s
+git clone https://github.com/harder/winget-tui-sharp
+cd winget-tui-sharp
+dotnet test tests/WingetTuiSharp.Tests.csproj   # 73 tests, <1s
 dotnet run -- --mock                       # UI iteration, any host
 ```
 
@@ -22,7 +22,7 @@ Building the actual AOT binary requires a **Windows host** with Visual Studio Bu
 
 ## Filing issues
 
-- **Bugs**: include the failing scenario, OS + architecture (x64 vs arm64), and where possible a `--dump` trace (e.g. `winget-tui-gui --dump search vscode > dump.txt`).
+- **Bugs**: include the failing scenario, OS + architecture (x64 vs arm64), and where possible a `--dump` trace (e.g. `winget-tui-sharp --dump search vscode > dump.txt`).
 - **Parity gaps**: link to the upstream Rust code that does it differently.
 - **Terminal.Gui regressions**: include the version you upgraded from and to. The Terminal.Gui compatibility tests in `tests/ParserTests.cs` should ideally catch these — if a regression slipped through, an extra test for it is highly welcome.
 

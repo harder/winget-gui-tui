@@ -1,5 +1,5 @@
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Mock backend used when winget is not available (e.g., running this on Linux/macOS for parity testing).

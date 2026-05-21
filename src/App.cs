@@ -1,7 +1,7 @@
 using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Top-level window. Hosts the header (logo + tabs), search/filter input,
@@ -10,7 +10,8 @@ namespace WingetTui;
 public sealed class App : Runnable
 {
     /// <summary>Total rows reserved by the logo/header chrome before search or main content.</summary>
-    private const int HeaderHeight = Logo.LogoHeight;
+    /// <remarks>One row of breathing room below the wordmark before the list/search start.</remarks>
+    private const int HeaderHeight = Logo.LogoHeight + 1;
 
     private readonly AppState _state;
     private readonly TabBar _tabBar;
@@ -34,10 +35,10 @@ public sealed class App : Runnable
         Title = "winget-tui (Terminal.Gui port)";
 
         // --- Header: logo on the left, tabs to the right, vertically centered against the
-        // 3-row logo. Search/filter lives immediately below the logo header and temporarily
+        // wordmark. Search/filter lives immediately below the logo header and temporarily
         // pushes the list/detail panes down one row while active. ---
         _logo = new () { X = 1, Y = 0 };
-        _tabBar = new () { X = Pos.Right (_logo) + 4, Y = 1, Width = Dim.Fill (1) };
+        _tabBar = new () { X = Pos.Right (_logo) + 4, Y = (Logo.LogoHeight - 1) / 2, Width = Dim.Fill (1) };
 
         // --- Search / filter input (hidden until needed). Lives immediately below the
         // header chrome; the list shifts down another row when search is shown. ---
@@ -345,7 +346,7 @@ public sealed class App : Runnable
 
                     return marker + pin + p.Name;
                 },
-                [HeaderWithSort ("Id", SortField.Id)] = p => p.Id,
+                [HeaderWithSort ("Id", SortField.Id)] = p => FormatIdForDisplay (p.Id),
                 [HeaderWithSort ("Version", SortField.Version)] = p => p.Version,
                 ["Available"] = p => p.AvailableVersion ?? string.Empty,
                 ["Source"] = p => p.Source
@@ -361,7 +362,7 @@ public sealed class App : Runnable
 
                     return pin + p.Name;
                 },
-                [HeaderWithSort ("Id", SortField.Id)] = p => p.Id,
+                [HeaderWithSort ("Id", SortField.Id)] = p => FormatIdForDisplay (p.Id),
                 [HeaderWithSort ("Version", SortField.Version)] = p => p.Version,
                 ["Source"] = p => p.Source
             };
@@ -620,6 +621,27 @@ public sealed class App : Runnable
         }
     }
 
+    /// <summary>
+    /// Cosmetic transform for the Id column: ARP-derived ids look like
+    /// <c>ARP\Machine\X64\{registry-key}</c>. The first three segments are identical noise
+    /// across hundreds of installed-only rows, so strip them and show just the trailing
+    /// registry key, which is the part that actually identifies the package. The original
+    /// id on <see cref="Package.Id"/> is preserved for backend operations.
+    /// </summary>
+    internal static string FormatIdForDisplay (string id)
+    {
+        if (!id.StartsWith ("ARP\\", StringComparison.Ordinal))
+        {
+            return id;
+        }
+
+        string [] parts = id.Split ('\\');
+
+        // Expected shape: ARP \ {Machine|User} \ {X64|Arm64|X86|Arm} \ {key…}.
+        // If anything shorter, fall back to the raw id rather than misrepresent it.
+        return parts.Length >= 4 ? string.Join ('\\', parts [3..]) : id;
+    }
+
     private static PackageDetail BuildStubDetail (Package p) =>
         new ()
         {
@@ -629,7 +651,8 @@ public sealed class App : Runnable
             AvailableVersion = p.AvailableVersion,
             Source = p.Source,
             PinState = p.PinState,
-            Description = "winget could not retrieve manifest details for this package. Showing list-view information only."
+            Description = "winget could not retrieve manifest details for this package. Showing list-view information only.",
+            IsDescriptionDegraded = true
         };
 
     private Package? CurrentPackage ()

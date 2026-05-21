@@ -1,4 +1,4 @@
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// Right-side package detail panel. Renders the package's metadata with inline styles —
@@ -110,7 +110,17 @@ public sealed class DetailPanel : FrameView
         {
             AddBlank ();
             AddSingle ("Description:", Theme.Accent, TextStyle.Bold);
-            AddParagraph (detail.Description);
+
+            if (detail.IsDescriptionDegraded)
+            {
+                // Visually distinguish synthesized "no manifest available" notes from real
+                // package descriptions: leading ⚠ glyph in accent + body in secondary text.
+                AddDegradedParagraph (detail.Description);
+            }
+            else
+            {
+                AddParagraph (detail.Description);
+            }
         }
 
         AddBlank ();
@@ -556,6 +566,27 @@ public sealed class DetailPanel : FrameView
         foreach (string paragraph in text.Split ('\n'))
         {
             _lines.Add ([new Span (paragraph, new (Theme.TextPrimary, Theme.Surface))]);
+        }
+    }
+
+    private void AddDegradedParagraph (string text)
+    {
+        bool first = true;
+
+        foreach (string paragraph in text.Split ('\n'))
+        {
+            if (first)
+            {
+                _lines.Add ([
+                    new Span ("⚠ ", new (Theme.Accent, Theme.Surface)),
+                    new Span (paragraph, new (Theme.TextSecondary, Theme.Surface, TextStyle.Italic))
+                ]);
+                first = false;
+            }
+            else
+            {
+                _lines.Add ([new Span (paragraph, new (Theme.TextSecondary, Theme.Surface, TextStyle.Italic))]);
+            }
         }
     }
 

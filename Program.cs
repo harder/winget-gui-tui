@@ -1,4 +1,4 @@
-using WingetTui;
+using WingetTuiSharp;
 
 if (args.Length > 0 && args [0] is "--dump")
 {
@@ -6,9 +6,9 @@ if (args.Length > 0 && args [0] is "--dump")
     // verbatim, plus a hex dump of the bytes immediately around the dash-line separator.
     // Use this on Windows to verify the encoding and figure out why ParseTable is empty:
     //
-    //     winget-tui-gui.exe --dump search vscode
-    //     winget-tui-gui.exe --dump list
-    //     winget-tui-gui.exe --dump upgrade
+    //     winget-tui-sharp.exe --dump search vscode
+    //     winget-tui-sharp.exe --dump list
+    //     winget-tui-sharp.exe --dump upgrade
     string [] cmd = args.Length > 1
                         ? [.. args.Skip (1), "--accept-source-agreements"]
                         : ["list", "--accept-source-agreements"];

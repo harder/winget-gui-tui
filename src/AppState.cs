@@ -1,5 +1,5 @@
 
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 /// <summary>
 /// In-memory state for the running app.

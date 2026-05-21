@@ -42,30 +42,30 @@ jobs:
           dotnet-quality: 'preview'
           cache: true
           cache-dependency-path: |
-            WingetTui.csproj
-            tests/WingetTui.Tests.csproj
+            WingetTuiSharp.csproj
+            tests/WingetTuiSharp.Tests.csproj
 
       - name: Compute CI build version
         id: version
         shell: bash
         run: |
-          VERSION_PREFIX="$(grep -oPm1 '(?<=<Version>)[^<]+' WingetTui.csproj)"
+          VERSION_PREFIX="$(grep -oPm1 '(?<=<Version>)[^<]+' WingetTuiSharp.csproj)"
           CI_VERSION="${VERSION_PREFIX}-ci.${GITHUB_RUN_NUMBER}+sha.${GITHUB_SHA::7}"
           echo "ci_version=$CI_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Restore
-        run: dotnet restore tests/WingetTui.Tests.csproj
+        run: dotnet restore tests/WingetTuiSharp.Tests.csproj
 
       - name: Build
         run: >
-          dotnet build tests/WingetTui.Tests.csproj
+          dotnet build tests/WingetTuiSharp.Tests.csproj
           --no-restore
           --configuration Release
           /p:Version=${{ steps.version.outputs.ci_version }}
           /p:InformationalVersion=${{ steps.version.outputs.ci_version }}
 
       - name: Test
-        run: dotnet test tests/WingetTui.Tests.csproj --no-build --configuration Release --verbosity normal
+        run: dotnet test tests/WingetTuiSharp.Tests.csproj --no-build --configuration Release --verbosity normal
 
       # Mock-backend smoke: launch the binary with --mock for a couple seconds and verify
       # it exits cleanly (no stderr output, no crash). Catches regressions that compile
@@ -73,7 +73,7 @@ jobs:
       - name: Mock-run smoke
         shell: pwsh
         run: |
-          $proc = Start-Process -FilePath "dotnet" -ArgumentList "bin/Release/net10.0/winget-tui-gui.dll", "--mock" -PassThru -RedirectStandardError err.log
+          $proc = Start-Process -FilePath "dotnet" -ArgumentList "bin/Release/net10.0/winget-tui-sharp.dll", "--mock" -PassThru -RedirectStandardError err.log
           Start-Sleep -Seconds 2
           if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           if ((Get-Item err.log).Length -gt 0) {
@@ -85,7 +85,7 @@ jobs:
       - name: Upload CI build outputs
         uses: actions/upload-artifact@v4
         with:
-          name: winget-tui-gui-${{ steps.version.outputs.ci_version }}-win-build
+          name: winget-tui-sharp-${{ steps.version.outputs.ci_version }}-win-build
           path: |
             bin/Release/net10.0/**
             tests/bin/Release/net10.0/**

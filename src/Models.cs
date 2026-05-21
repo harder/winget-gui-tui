@@ -1,4 +1,4 @@
-namespace WingetTui;
+namespace WingetTuiSharp;
 
 public enum AppMode
 {
@@ -100,6 +100,13 @@ public sealed class PackageDetail
     public string? ReleaseNotesUrl { get; init; }
 
     /// <summary>
+    /// True when <see cref="Description"/> holds a synthesized "couldn't fetch / nothing available"
+    /// note rather than real manifest copy. Used by the detail panel to dim/annotate the line so
+    /// it's not mistaken for the real package description.
+    /// </summary>
+    public bool IsDescriptionDegraded { get; set; }
+
+    /// <summary>
     /// Merge in fields known from the originating <see cref="Package"/> list row that
     /// `winget show` doesn't always emit: Source, Version (installed), AvailableVersion.
     /// Mirrors upstream src/cli_backend.rs's `merge_over` behavior.
@@ -150,6 +157,7 @@ public sealed class PackageDetail
         if (sparse)
         {
             Description = "Additional metadata is not available for this package in any configured winget source.";
+            IsDescriptionDegraded = true;
         }
     }
 }

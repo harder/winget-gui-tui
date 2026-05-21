@@ -1,4 +1,4 @@
-namespace WingetTui.Tests;
+namespace WingetTuiSharp.Tests;
 
 public class AppBehaviorTests
 {
@@ -84,9 +84,10 @@ public class AppBehaviorTests
         TabBar tabBar = GetPrivateField<TabBar> (app, "_tabBar");
         FrameView listFrame = GetPrivateField<FrameView> (app, "_listFrame");
 
-        Assert.Equal (1, tabBar.Frame.Y);
+        Assert.Equal (2, tabBar.Frame.Y);
         Assert.True (tabBar.Frame.X >= logo.Frame.X + logo.Frame.Width);
-        Assert.Equal (Logo.LogoHeight, listFrame.Frame.Y);
+        // One row of breathing room below the wordmark before the list begins.
+        Assert.Equal (Logo.LogoHeight + 1, listFrame.Frame.Y);
     }
 
     [Fact]

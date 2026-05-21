@@ -21,7 +21,7 @@ before merge.
 
 <!-- How did you confirm this works? -->
 
-- [ ] `dotnet test tests/WingetTui.Tests.csproj` — all 73+ tests pass
+- [ ] `dotnet test tests/WingetTuiSharp.Tests.csproj` — all 73+ tests pass
 - [ ] Added test(s) for the changed behavior (specify which below if so)
 - [ ] Ran `dotnet run -- --mock` (UI iteration sanity)
 - [ ] Ran AOT publish on Windows: `dotnet publish -c Release -r win-x64`
