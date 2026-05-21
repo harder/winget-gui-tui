@@ -2,10 +2,10 @@
 
 > ⚠️ **Proof of concept** This project exists to **benchmark [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) v2 against Ratatui**: feature parity, rendering fidelity, performance, and UX. However it is fully operational: Run it on a Windows machine only if you understand that **install / uninstall / upgrade actions invoke the real `winget` CLI** and will operate on your real package state.
 
-Winget-tui-sharp is a C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) reimplementation of the wonderful [winget-tui](https://github.com/shanselman/winget-tui) - a Rust + Ratatui based TUI for the [Windows Package Manager (winget)](https://github.com/microsoft/winget-cli). **Winget-tui** is a beautiful terminal app - you should go download it and try it if you have a Windows machine!
+Winget-tui-sharp is a C# / [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) reimplementation of the wonderful [winget-tui](https://github.com/shanselman/winget-tui) - a Rust + Ratatui based TUI for the [Windows Package Manager (winget)](https://github.com/microsoft/winget-cli). **Winget-tui** is a beautiful terminal app - you should go download it and try it if you have a Windows machine! [Go download winget-tui](https://github.com/shanselman/winget-tui).
 
 
-This application shows what is possible with a .NET terminal UI, and helps us improve. Release binaries are Native AOT and self-contained. You do NOT need the .NET runtime to use them.
+This application shows what is possible with a .NET terminal UI, and helps us improve the Terminal.Gui open source library. Release binaries are Native AOT and self-contained. You do NOT need the .NET runtime to use them.
 
 [![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=csharp&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![Terminal.Gui](https://img.shields.io/badge/Terminal.Gui-v2-FF6F00?style=flat&logo=windowsterminal&logoColor=white)](https://github.com/gui-cs/Terminal.Gui)
@@ -26,6 +26,40 @@ UI layout, keybindings, color palette, table structure, winget output parsing, d
 Differences between the two implementations, including Terminal.Gui feature gaps surfaced while porting, are documented in [feature-gaps.md](feature-gaps.md).
 
 This port is also MIT-licensed; see [LICENSE](LICENSE).
+
+## Prerequisites
+
+- Windows 10/11
+- [winget](https://github.com/microsoft/winget-cli) 1.4+ installed
+- A terminal with Unicode support (Windows Terminal recommended)
+
+## Installation
+
+### Download a release
+
+You do **not** need .NET to run `winget-tui-sharp`.
+
+1. Download the latest Windows binary from the [Releases page](https://github.com/harder/winget-tui-sharp/releases/latest):
+   - `winget-tui-sharp-x64.exe` for Windows on Intel/AMD x86
+   - `winget-tui-sharp-arm64.exe` for Windows on ARM
+2. Run the `.exe` from Windows Terminal:
+
+```powershell
+.\winget-tui-sharp-x64.exe
+```
+
+### Code signing
+
+The released binaries are **not code-signed** yet. This POC doesn't have a Azure Trusted Signing subscription set up, so users will see a Microsoft Defender SmartScreen warning on first run. See [code-signing.md](code-signing.md) for the full breakdown of options researched (Azure Trusted Signing, SignPath.io OSS sponsorship, EV cert via Azure Key Vault, GitHub Attestations) and which I'd adopt first if this graduates from POC.
+
+**Workaround for users on the unsigned binary:**
+
+```powershell
+Unblock-File -Path .\winget-tui-sharp.exe
+```
+
+Or right-click the exe → *Properties* → check *Unblock* → *OK*. On the first run after unblocking, click *More info → Run anyway* and SmartScreen will remember the decision.
+
 
 ## What's in the box
 
@@ -62,16 +96,6 @@ This port is also MIT-licensed; see [LICENSE](LICENSE).
 ## Building
 
 `winget` itself is Windows-only, so the deployed target is Windows. The build uses **.NET Native AOT** to produce a single standalone `.exe` (~10–15 MB) that runs without `dotnet` installed on the target machine.
-
-### Prerequisites
-
-You must build on a **Windows host** - Native AOT does not support cross-OS publish (a Linux/WSL `dotnet publish` for `win-x64` or `win-arm64` will fail with "Cross-OS native compilation is not supported"). Architecture cross-targeting *between* the two Windows RIDs works fine, so you don't need an ARM machine to produce an arm64 build.
-
-- **Windows host** (any architecture, see arch cross-compile note below)
-- **.NET 10 SDK** ([install](https://dot.net))
-- **Visual Studio Build Tools** with the *Desktop development with C++* workload
-  (the AOT linker uses MSVC's `link.exe` and the Windows SDK).
-- To produce an **arm64** binary, also install the **MSVC v143 - VS 2022 C++ ARM64 build tools** component (works from x64 or arm64 hosts).
 
 ### Build the standalone executable
 
@@ -271,31 +295,6 @@ This is a POC. Things known to be unfinished or different from upstream are list
 Things explicitly **out of scope**:
 
 - Configuration file support (`%APPDATA%\winget-tui\config.toml`)
-
-## Releases
-
-Tag-driven via `.github/workflows/release.yml`:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Builds AOT executables for `win-x64` and `win-arm64`, packages each as both a bare `.exe` and a portable `.zip` bundle (exe + README + LICENSE + feature-gaps), computes SHA-256 checksums, and publishes a GitHub Release with all artifacts attached.
-
-Manual dispatch is also available from the Actions tab (provide a `version` input).
-
-### Code signing
-
-The released binaries are **not code-signed** yet. This POC doesn't have a Azure Trusted Signing subscription set up, so users will see a Microsoft Defender SmartScreen warning on first run. See [code-signing.md](code-signing.md) for the full breakdown of options researched (Azure Trusted Signing, SignPath.io OSS sponsorship, EV cert via Azure Key Vault, GitHub Attestations) and which I'd adopt first if this graduates from POC.
-
-**Workaround for users on the unsigned binary:**
-
-```powershell
-Unblock-File -Path .\winget-tui-sharp.exe
-```
-
-Or right-click the exe → *Properties* → check *Unblock* → *OK*. On the first run after unblocking, click *More info → Run anyway* and SmartScreen will remember the decision.
 
 ## Contributing
 
