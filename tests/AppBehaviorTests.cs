@@ -84,7 +84,7 @@ public class AppBehaviorTests
         TabBar tabBar = GetPrivateField<TabBar> (app, "_tabBar");
         FrameView listFrame = GetPrivateField<FrameView> (app, "_listFrame");
 
-        Assert.Equal (1, tabBar.Frame.Y);
+        Assert.Equal (2, tabBar.Frame.Y);
         Assert.True (tabBar.Frame.X >= logo.Frame.X + logo.Frame.Width);
         Assert.Equal (Logo.LogoHeight, listFrame.Frame.Y);
     }

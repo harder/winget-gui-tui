@@ -141,23 +141,23 @@ public static class Theme
 }
 
 /// <summary>
-/// Pixel-art "winget" wordart rendered with upper/lower half-blocks. Mirrors the 31×6 grid
-/// in src/theme.rs::logo_lines, compressed to 3 text rows.
+/// Block-art "WINGET TUI #" wordmark rendered directly in 5 text rows for better legibility.
 /// </summary>
 public sealed class Logo : View
 {
-    // "WINGET TUI #" rendered on a 43×6 pixel grid (compressed to 3 text rows via
-    // upper/lower half-blocks). Each letter occupies 1–5 columns with a 1-column gap
+    // "WINGET TUI #" rendered as a compact 51×5 block wordmark with a 1-column gap
     // between letters and a 2-column gap between words.
     private static readonly string [] _lines =
     [
-        "█   █ █ █▄ █ ▄▀▀▀ █▀▀ ▀█▀  ▀█▀ █  █ █  █ █",
-        "█ █ █ █ █ ▀█ █ ▀█ █▀   █    █  █  █ █  ▀▀▀",
-        " ▀ ▀ ▀ ▀  ▀  ▀▀▀ ▀▀▀  ▀    ▀   ▀▀  ▀  █ █"
+        "█   █ ███ █  █  ██  ████ ████  ████ █  █ ███   █ █ ",
+        "█   █  █  ██ █ █    █     █     █   █  █  █   █████",
+        "█ █ █  █  █ ██ █ ██ ███   █     █   █  █  █    █ █ ",
+        "██ ██  █  █  █ █  █ █     █     █   █  █  █   █████",
+        "█   █ ███ █  █  ███ ████  █     █    ██  ███   █ █ "
     ];
 
-    public const int LogoWidth = 43;
-    public const int LogoHeight = 3;
+    public const int LogoWidth = 51;
+    public const int LogoHeight = 5;
 
     public Logo ()
     {

@@ -34,10 +34,10 @@ public sealed class App : Runnable
         Title = "winget-tui (Terminal.Gui port)";
 
         // --- Header: logo on the left, tabs to the right, vertically centered against the
-        // 3-row logo. Search/filter lives immediately below the logo header and temporarily
+        // wordmark. Search/filter lives immediately below the logo header and temporarily
         // pushes the list/detail panes down one row while active. ---
         _logo = new () { X = 1, Y = 0 };
-        _tabBar = new () { X = Pos.Right (_logo) + 4, Y = 1, Width = Dim.Fill (1) };
+        _tabBar = new () { X = Pos.Right (_logo) + 4, Y = (Logo.LogoHeight - 1) / 2, Width = Dim.Fill (1) };
 
         // --- Search / filter input (hidden until needed). Lives immediately below the
         // header chrome; the list shifts down another row when search is shown. ---
