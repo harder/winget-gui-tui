@@ -5,7 +5,7 @@ building this winget-tui port. Each entry is the kind of thing that should drive
 Terminal.Gui issue, PR, or wishlist discussion — not a complaint about Terminal.Gui being
 incomplete. Where this port works around a gap, the workaround is noted.
 
-The list is anchored to **Terminal.Gui 2.2.2-develop.16** (the version in `WingetTuiSharp.csproj`).
+The list is anchored to **Terminal.Gui 2.4.3-develop.9** (the version in `WingetTuiSharp.csproj`).
 If Terminal.Gui upgrades close any of these, please send a PR removing the entry — and
 ideally adding a test in `tests/ParserTests.cs § Terminal.Gui compatibility` that would
 have caught a regression.
@@ -235,7 +235,16 @@ whether they've regressed.
 
 - ~~**Bracketed paste support**~~ — Terminal.Gui's PR #5277 added the full pipeline.
   See section F above.
--
+- ~~**Markdown view auto-focuses last link table on initial render**~~ — Fixed upstream in
+  PR #5370 (released in 2.4.x). Our `DetailPanel` still sets `CanFocus = false` on the
+  embedded `Markdown` views as a defense-in-depth, but the framework no longer steals
+  focus on `Add()`.
+- ~~**Redraw fan-out from ancestor-only layout propagation**~~ — Fixed upstream in
+  PR #5373 (#5357). Our many `SetNeedsLayout`/`SetNeedsDraw` calls in `App.cs` and
+  `DetailPanel.cs` no longer trigger subtree-wide invalidations when only ancestor
+  layout changes.
+- ~~**Duplicate `ScreenChanged` from `Application.Screen` setter**~~ — Fixed upstream in
+  PR #5404 (#5274). Halves the redraw cost on terminal resize.
 ## H. Wishlist — items that would have made the port noticeably shorter
 
 Prioritized by LOC saved if Terminal.Gui implemented them:

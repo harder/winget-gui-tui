@@ -21,12 +21,11 @@
   </PropertyGroup>
   <ItemGroup>
     <!--
-      Pinned to the develop pre-release that bundles bracketed-paste support (PR #5277).
-      Bump as the upstream Terminal.Gui develop branch publishes new prereleases; this is
-      intentionally a moving target since the project's purpose is to evaluate parity
-      against current Terminal.Gui behavior.
+      Tracks the Terminal.Gui v2 develop pre-release. Bump as upstream publishes new
+      prereleases; this is intentionally a moving target since the project's purpose is
+      to evaluate parity against current Terminal.Gui behavior.
     -->
-    <PackageReference Include="Terminal.Gui" Version="2.2.2-develop.16" />
+    <PackageReference Include="Terminal.Gui" Version="2.4.3-develop.9" />
   </ItemGroup>
 
   <ItemGroup>
