@@ -136,46 +136,72 @@ What this proves:
 
 ### Root cause
 
-The `ComInterop` package ships the WinRT projection (`WinRT.Runtime` 2.2.0, and
-the projection DLL even carries `WinRTExposedTypeAttribute`, so the projection
-itself is AOT-aware) — **but it does not bring the CsWinRT build-time source
-generator**. A consuming app that wants AOT must reference `Microsoft.Windows.CsWinRT`
-itself so the generator emits the marshaling for the generic-collection
-instantiations *its own code* touches. Ours didn't, so `IIterable<T>` was never
-generated → `.Count` works, `foreach` throws.
+`foreach` goes through `IIterable<T>` (`GetEnumerator` → `First`). Under AOT,
+the runtime-callable-wrapper for that *generic instantiation*
+(`IIterable<PackageCatalogReference>`, etc.) must be generated ahead of time
+because there is no JIT to synthesize it on demand. The `ComInterop` projection
+is itself AOT-aware (`WinRT.Runtime` 2.2.0; the projection DLL carries
+`WinRTExposedTypeAttribute`) and registers RCWs for its **own types** — which is
+why property access (`pkg.Id`, `pkg.InstalledVersion`, …) and `IVectorView<T>`
+(`.Count`, `GetAt`) all work. But it does not register the generic *collection*
+instantiations a consumer might enumerate, and nothing else generated them.
 
-### The fix (in `ComBackendSpike.csproj`)
+### What did NOT fix it
+
+Referencing `Microsoft.Windows.CsWinRT` 2.2.0 and turning on the AOT optimizer
++ RCW factory fallback generator:
 
 ```xml
 <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
-<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 <CsWinRTAotOptimizerEnabled>Auto</CsWinRTAotOptimizerEnabled>
-<!-- consume the prebuilt projection; don't re-run cswinrt.exe over the winmd -->
 <CsWinRTGenerateProjection>false</CsWinRTGenerateProjection>
-<!-- generate RCW factories for projected types we consume under AOT -->
 <CsWinRTRcwFactoryFallbackGeneratorForceOptIn>true</CsWinRTRcwFactoryFallbackGeneratorForceOptIn>
 ```
 
-`CsWinRTRcwFactoryFallbackGeneratorForceOptIn` is the by-name knob for exactly
-this scenario ("I consume a third-party projection under AOT"); it's off by
-default for non-component apps, which is why the bare consumer hit the cast.
+This is the documented knob for "I consume a third-party projection under AOT,"
+and it was confirmed wired in (analyzer ran, `…ForceOptIn = true` reached the
+compiler). **But the Windows runtime still threw `InvalidCastException` on
+`foreach` for both `catalogs` and `matches`.** The generator does not emit the
+`IIterable<T>` instantiation for this projection's element types. (CsWinRT 3.0,
+built on .NET 10 with trim/AOT as a first-class goal, is the upstream fix; not
+shipped as stable yet.) These properties were therefore **removed** from the
+spike — they added a heavy build-time dependency and the `cswinrt.exe` cross-OS
+friction for zero runtime benefit.
 
-### Belt-and-suspenders: indexing instead of `foreach`
+### What DID work — the recipe: index, don't enumerate
 
-The spike's `Probe<T>()` now traverses each projected list **both** ways and
-reports which survives AOT. Indexed access (`list[i]` → `IVectorView.GetAt`) uses
-the same ABI surface as `.Count`, so it's expected to work even if the config fix
-somehow misses an instantiation. **If `foreach` still throws after the fix, the
-real backend should consume WinRT vector views with `for (int i…)` loops** — a
-cheap, guaranteed-AOT-safe pattern. One Windows run now produces a decision table
-instead of a crash.
+Indexed access via `IVectorView.GetAt` (`list[i]`) works perfectly under AOT and
+needs **no** CsWinRT optimizer at all — the same `IVectorView` surface as `.Count`,
+which worked in the very first run before the optimizer package existed. The
+spike's `Probe<T>()` confirms this for every projected collection:
 
-> ⚠️ Verification limit: this fix was validated only as far as a non-Windows dev
-> box allows — restore resolves with no version skew (CsWinRT 2.2.0 matches the
-> `WinRT.Runtime` already in the graph), the project compiles, and the
-> `WinRT.SourceGenerator` analyzer runs with `…ForceOptIn = true` confirmed
-> flowing to the compiler. The runtime behavior must be confirmed by re-running
-> `Run-AotSpike.ps1` on Windows.
+```
+[spike] catalogs (IReadOnlyList<PackageCatalogReference>): 3 item(s)
+[spike]   ✗ foreach threw InvalidCastException: Specified cast is not valid.
+[spike]   ✓ indexed for-loop (IVectorView.GetAt) WORKS - use this pattern in the backend
+[spike] matches (IReadOnlyList<MatchResult>): 3 item(s)
+[spike]   ✗ foreach threw InvalidCastException: Specified cast is not valid.
+[spike]   ✓ indexed for-loop (IVectorView.GetAt) WORKS - use this pattern in the backend
+```
+
+**Backend rule:** never `foreach` (or LINQ) directly over a WinRT-projected
+collection. Index it. The clean way is one tiny helper that materializes a WinRT
+list into a normal `List<T>` via indexing, after which all the usual
+`foreach`/LINQ works on the managed copy:
+
+```csharp
+static List<T> Materialize<T> (IReadOnlyList<T> winrt)
+{
+    var copy = new List<T> (winrt.Count);
+    for (int i = 0; i < winrt.Count; i++) copy.Add (winrt [i]);
+    return copy;
+}
+```
+
+### Final dependency footprint
+
+`Microsoft.WindowsPackageManager.ComInterop` only. No CsWinRT optimizer package,
+no extra build-time tooling, no `AllowUnsafeBlocks`. The simplest possible recipe.
 
 ## What needs a Windows host to finish verifying
 
@@ -196,19 +222,19 @@ instead of a crash.
 
 ## Verdict
 
-**Go — with a known, fixed gotcha.** The static gate passes (0 IL2026/IL3050;
-the 35 IL2081 are CsWinRT infra noise). The first Windows run then proved AOT
-codegen *and* COM activation both work, and surfaced exactly one real issue:
-enumerating projected generic collections under AOT needs the consuming app to
-run the CsWinRT source generator and opt into the RCW factory fallback
-(`CsWinRTRcwFactoryFallbackGeneratorForceOptIn=true`). That's now wired into the
-spike's `.csproj`, with indexed-access as a guaranteed-safe fallback pattern for
-the real backend. This was the one issue that historically blocks COM-in-AOT, and
-it has a documented fix — not a dead end.
+**Go.** Native AOT codegen, COM activation, `ConnectAsync`, `FindPackagesAsync`,
+and property marshaling on projected types all work on a real Windows AOT build.
+The static gate passes (0 IL2026/IL3050; the 35 IL2081 are CsWinRT infra noise).
 
-Re-run `Run-AotSpike.ps1` on Windows to confirm the fix at runtime. Remaining
-genuine unknowns: final AOT binary size, and clean cancellation through
-`IAsyncOperationWithProgress` — neither expected to surprise.
+The single constraint: **do not `foreach`/LINQ over WinRT-projected collections
+— index them** (`IVectorView.GetAt`), or materialize to a `List<T>` first via the
+helper above. `foreach` (`IIterable<T>`) throws `InvalidCastException` under AOT
+and the CsWinRT optimizer did not fix it for this projection; indexing works with
+zero extra dependencies. That's a cheap, well-bounded rule, not a blocker.
+
+Dependency footprint is just `ComInterop`. Remaining genuine unknowns: final AOT
+binary size, and clean cancellation through `IAsyncOperationWithProgress` —
+neither expected to surprise.
 
 ## Reproducing on Linux
 
