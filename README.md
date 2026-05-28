@@ -103,19 +103,23 @@ Or right-click the exe → *Properties* → check *Unblock* → *OK*. On the fir
 
 The architecture you build for must match where the binary will run:
 
-| Target Windows machine                                          | Command                                  |
-| --------------------------------------------------------------- | ---------------------------------------- |
-| Intel / AMD x64 (most Windows PCs)                              | `dotnet publish -c Release -r win-x64`   |
-| ARM64 (Surface Pro X, Snapdragon Copilot+ PCs, Windows Dev Kit) | `dotnet publish -c Release -r win-arm64` |
+The project multi-targets `net10.0` (cross-platform; mock/CLI backends) and
+`net10.0-windows10.0.26100.0` (the Windows deploy target, which adds the COM backend).
+Windows release builds must select the Windows TFM with `-f`:
+
+| Target Windows machine                                          | Command                                                                       |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Intel / AMD x64 (most Windows PCs)                              | `dotnet publish -c Release -f net10.0-windows10.0.26100.0 -r win-x64`   |
+| ARM64 (Surface Pro X, Snapdragon Copilot+ PCs, Windows Dev Kit) | `dotnet publish -c Release -f net10.0-windows10.0.26100.0 -r win-arm64` |
 
 ```powershell
 # x64 (Intel/AMD)
-dotnet publish -c Release -r win-x64
-.\bin\Release\net10.0\win-x64\publish\winget-tui-sharp.exe
+dotnet publish -c Release -f net10.0-windows10.0.26100.0 -r win-x64
+.\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\winget-tui-sharp.exe
 
 # arm64
-dotnet publish -c Release -r win-arm64
-.\bin\Release\net10.0\win-arm64\publish\winget-tui-sharp.exe
+dotnet publish -c Release -f net10.0-windows10.0.26100.0 -r win-arm64
+.\bin\Release\net10.0-windows10.0.26100.0\win-arm64\publish\winget-tui-sharp.exe
 ```
 
 **Cross-architecture compile** (`x64 → arm64` or `arm64 → x64`) works on Windows as long
@@ -126,12 +130,23 @@ Copy `winget-tui-sharp.exe` anywhere, no other files required.
 
 ### Dev iteration on any host (including WSL / macOS / Linux)
 
-For iterating on the code, `dotnet run` is faster than re-publishing AOT each time, and unlike the AOT publish it works on any OS - handy for hacking on the UI from WSL. There's no `winget` to invoke on non-Windows hosts, so use `--mock`:
+For iterating on the code, `dotnet run` is faster than re-publishing AOT each time, and unlike the AOT publish it works on any OS - handy for hacking on the UI from WSL. Because the project multi-targets, pick the cross-platform TFM with `-f net10.0` off-Windows. There's no `winget` to invoke on non-Windows hosts, so use `--mock`:
 
 ```bash
-dotnet run                  # Windows: hits real winget
-dotnet run -- --mock        # any host: mock backend, useful for UI development
+dotnet run -f net10.0                # any host: auto-falls back to mock if winget is absent
+dotnet run -f net10.0 -- --mock      # any host: force the mock backend (UI development)
 ```
+
+#### Choosing a backend at runtime
+
+| Flag        | Backend       | Notes                                                            |
+| ----------- | ------------- | ---------------------------------------------------------------- |
+| `--mock` / `-m` | `MockBackend`  | In-memory fixtures; works on any OS.                             |
+| `--cli`     | `CliBackend`   | Shells out to `winget.exe` and parses its table output.          |
+| `--com`     | `ComBackend`   | WinGet **COM API** — structured results, no stdout parsing. Windows build only. |
+| _(default)_ | COM on Windows builds, CLI elsewhere | Either degrades to the mock backend if `winget` isn't usable. |
+
+The COM backend talks to the WinGet COM API directly instead of parsing CLI output. Pinning has no COM surface, so pin/unpin/list-pins transparently delegate to the CLI. See [`spikes/ComBackendSpike/SPIKE-RESULTS.md`](spikes/ComBackendSpike/SPIKE-RESULTS.md) for the AOT validation behind it.
 
 ### Run the test suite
 
@@ -243,33 +258,38 @@ Mirrors `src/handler.rs` in the upstream:
    │                         IBackend                            │
    │   Search · ListInstalled · ListUpgrades · Show              │
    │   Install · Uninstall · Upgrade · Pin · Unpin · ListPins    │
-   └─────────────┬───────────────────────────────────┬───────────┘
-                 ▼                                   ▼
-   ┌──────────────────────────────┐   ┌──────────────────────────┐
-   │  CliBackend  (Windows)       │   │  MockBackend  (--mock)   │
-   │  ParseTable / ParseShow /    │   │  in-memory fixtures so   │
-   │  ParsePins / dedupe /        │   │  the UI runs on any host │
-   │  display-width column slice  │   │  for development         │
-   └──────────────┬───────────────┘   └──────────────────────────┘
-                  ▼
-   ┌─────────────────────────────────────────┐
-   │   winget.exe  (system, Windows-only)    │
-   └─────────────────────────────────────────┘
+   └────────┬──────────────────┬───────────────────────┬─────────┘
+            ▼                  ▼                       ▼
+   ┌─────────────────┐ ┌──────────────────┐ ┌──────────────────────┐
+   │ ComBackend      │ │  CliBackend      │ │  MockBackend (--mock)│
+   │ (--com, Win;    │ │  (--cli)         │ │  in-memory fixtures  │
+   │  default on Win)│ │  ParseTable /    │ │  so the UI runs on   │
+   │ WinGet COM API; │ │  ParseShow /     │ │  any host for dev    │
+   │ indexed access; │ │  ParsePins /     │ └──────────────────────┘
+   │ pins → CLI      │ │  dedupe          │
+   └───────┬─────────┘ └────────┬─────────┘
+           ▼                    ▼
+   ┌─────────────────┐ ┌─────────────────────────────────────────┐
+   │ WinGet COM      │ │   winget.exe  (system, Windows-only)    │
+   │ server (Win)    │ └─────────────────────────────────────────┘
+   └─────────────────┘
 ```
 
 Three layers, top to bottom: **UI** (`App` owns the widgets from `Ui.cs` plus
 `DetailPanel`), **state** (`AppState` is the single source of truth for what's filtered
 and selected, with generation counters that invalidate stale async responses), and
-**backend** (`IBackend` interface, two implementations). Async results from the
-backend flow back through `App.Invoke` on the UI thread, where they pass through
-the generation guard before mutating `AppState` and triggering a redraw.
+**backend** (`IBackend` interface, three implementations selected at runtime — see
+[Choosing a backend](#choosing-a-backend-at-runtime)). The `ComBackend` is compiled
+only into the Windows TFM. Async results from the backend flow back through
+`App.Invoke` on the UI thread, where they pass through the generation guard before
+mutating `AppState` and triggering a redraw.
 
 ## Project layout
 
 ```
 winget-tui-sharp/
 ├── Program.cs               # Entry point + winget-detection + --dump diagnostic
-├── WingetTuiSharp.csproj         # PackageReference on Terminal.Gui; AOT-configured
+├── WingetTuiSharp.csproj         # Multi-targets net10.0 + net10.0-windows; Terminal.Gui; AOT-configured
 ├── README.md
 ├── LICENSE                  # MIT
 ├── feature-gaps.md          # Terminal.Gui parity findings vs upstream
@@ -279,6 +299,7 @@ winget-tui-sharp/
 │   ├── Models.cs            # Package, PackageDetail, enums, OpResult
 │   ├── Backend.cs           # IBackend interface
 │   ├── CliBackend.cs        # Shells out to winget; parses table output
+│   ├── ComBackend.cs        # WinGet COM API backend (Windows TFM only; pins → CLI)
 │   ├── MockBackend.cs       # Fake packages so the UI runs anywhere
 │   ├── AppState.cs          # Filters, sort, selection, generation counters
 │   ├── Theme.cs             # Warm-amber palette + Schemes + pixel-art Logo

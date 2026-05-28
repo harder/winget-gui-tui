@@ -65,14 +65,13 @@ if (args.Length > 0 && args [0] is "--dump")
     return;
 }
 
-bool useMock = args.Any (a => a is "--mock" or "-m") || !IsWingetAvailable ();
-
-if (useMock && !args.Any (a => a is "--mock" or "-m"))
-{
-    Console.Error.WriteLine ("winget not found on PATH — falling back to mock backend. Run with `winget` available to drive the real CLI.");
-}
-
-IBackend backend = useMock ? new MockBackend () : new CliBackend ();
+// Backend selection (in priority order):
+//   --mock / -m   force the in-memory mock (cross-platform dev/parity)
+//   --cli         force the winget.exe CLI parser
+//   --com         force the WinGet COM API backend (Windows builds only)
+//   (default)     COM on Windows builds, CLI elsewhere; either falls back to mock
+//                 if winget isn't usable.
+IBackend backend = SelectBackend (args);
 
 Theme.Register ();
 
@@ -83,6 +82,56 @@ window.Dispose ();
 app.Dispose ();
 
 return;
+
+static IBackend SelectBackend (string [] args)
+{
+    bool wantMock = args.Any (a => a is "--mock" or "-m");
+    bool wantCli = args.Any (a => a is "--cli");
+    bool wantCom = args.Any (a => a is "--com");
+
+    if (wantMock)
+    {
+        return new MockBackend ();
+    }
+
+#if WINGET_COM
+    // On the Windows build, COM is the default unless the user explicitly asked for the CLI.
+    if (wantCom || (!wantCli && OperatingSystem.IsWindows ()))
+    {
+        try
+        {
+            return new ComBackend ();
+        }
+        catch (Exception ex)
+        {
+            // COM server not registered / activation failed — degrade gracefully rather than crash.
+            Console.Error.WriteLine ($"COM backend unavailable ({ex.Message}); falling back to the CLI backend.");
+        }
+    }
+#else
+    if (wantCom)
+    {
+        Console.Error.WriteLine ("--com is only available in the Windows build (net10.0-windows…); using the CLI backend instead.");
+    }
+#endif
+
+    // CLI path (explicit --cli, or the non-Windows / COM-unavailable default).
+    if (!IsWingetAvailable ())
+    {
+        if (!wantCli)
+        {
+            Console.Error.WriteLine ("winget not found on PATH — falling back to mock backend. Run with `winget` available to drive the real CLI.");
+        }
+        else
+        {
+            Console.Error.WriteLine ("winget not found on PATH — mock backend used despite --cli.");
+        }
+
+        return new MockBackend ();
+    }
+
+    return new CliBackend ();
+}
 
 static bool IsWingetAvailable ()
 {
