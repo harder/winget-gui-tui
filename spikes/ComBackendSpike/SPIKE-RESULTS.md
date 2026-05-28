@@ -151,10 +151,22 @@ dotnet publish -r win-x64 -c Release \
 
 ## Reproducing on Windows (the real test)
 
+A self-contained PowerShell wrapper at `Run-AotSpike.ps1` publishes the
+spike with `PublishAot=true` and runs the produced binary. All paths
+inside the script are anchored on `$PSScriptRoot`, so it works no
+matter the current directory:
+
 ```powershell
-cd spikes\ComBackendSpike
-dotnet restore -r win-x64
-dotnet publish -r win-x64 -c Release -p:PublishAot=true
-.\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\com-backend-spike.exe
-.\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\com-backend-spike.exe "visual studio code"
+# from anywhere
+pwsh C:\path\to\winget-tui-sharp\spikes\ComBackendSpike\Run-AotSpike.ps1
+pwsh C:\path\to\winget-tui-sharp\spikes\ComBackendSpike\Run-AotSpike.ps1 -Query "visual studio code"
+pwsh C:\path\to\winget-tui-sharp\spikes\ComBackendSpike\Run-AotSpike.ps1 -Rid win-arm64
+pwsh C:\path\to\winget-tui-sharp\spikes\ComBackendSpike\Run-AotSpike.ps1 -SkipPublish   # rerun without rebuilding
+```
+
+Or the equivalent without the wrapper:
+
+```powershell
+dotnet publish C:\path\to\winget-tui-sharp\spikes\ComBackendSpike\ComBackendSpike.csproj -r win-x64 -c Release -p:PublishAot=true
+& C:\path\to\winget-tui-sharp\spikes\ComBackendSpike\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\com-backend-spike.exe
 ```
