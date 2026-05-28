@@ -29,6 +29,44 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <StripSymbols>true</StripSymbols>
 
+    <!--
+      Required for the CsWinRT AOT optimizer's generated marshaling code, and to let
+      the optimizer auto-detect the projected generic instantiations we consume
+      (IEnumerable<PackageCatalogReference>, IReadOnlyList<PackageVersionId>, ...).
+
+      Without the optimizer running in the *consuming* project, enumerating a
+      WinRT-projected IReadOnlyList<T> throws at runtime under AOT:
+        System.InvalidCastException at IReadOnlyListImpl`1.Make_IEnumerableObjRef()
+      because there is no JIT to synthesize the IIterable<T> parameterized-IID
+      marshaler on demand. .Count (IVectorView.Size) works without it; GetEnumerator
+      does not. See SPIKE-RESULTS.md "Runtime findings".
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CsWinRTAotOptimizerEnabled>Auto</CsWinRTAotOptimizerEnabled>
+
+    <!--
+      We CONSUME the prebuilt projection shipped in the ComInterop package; we do
+      not author one. Turn off CsWinRT's projection-generation step (it shells out
+      to cswinrt.exe, a win-x64 native tool) so it doesn't re-project the bundled
+      winmd and conflict with the shipped DLL. The AOT optimizer is a separate
+      Roslyn source generator (WinRT.SourceGenerator) and still runs — it's what
+      we actually need. This also lets the project build for analysis on a
+      non-Windows host, where cswinrt.exe cannot execute.
+    -->
+    <CsWinRTGenerateProjection>false</CsWinRTGenerateProjection>
+
+    <!--
+      THE fix for the runtime InvalidCastException on foreach over a projected
+      collection. The RCW factory fallback generator emits the runtime-callable-
+      wrapper factories for projected types (and their generic-collection
+      instantiations like IIterable<PackageCatalogReference>) that this app
+      consumes. It is OFF by default for non-component apps, which is why a plain
+      consumer that only references the projection hits the cast failure. Forcing
+      opt-in is the documented knob for "I consume a third-party projection under
+      AOT". (CompilerVisibleProperty read by WinRT.SourceGenerator.)
+    -->
+    <CsWinRTRcwFactoryFallbackGeneratorForceOptIn>true</CsWinRTRcwFactoryFallbackGeneratorForceOptIn>
+
     <!-- COM API needs an explicit arch. AnyCPU is rejected by the package's targets. -->
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
 
@@ -45,6 +83,14 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsPackageManager.ComInterop" Version="1.29.190-preview" />
+    <!--
+      The ComInterop package ships the WinRT.Runtime *runtime* (2.2.0) but not the
+      CsWinRT build-time source generator. A consuming app must reference CsWinRT
+      itself for the AOT optimizer to generate vtable/IID marshaling for the generic
+      collection instantiations this app's code touches. Version pinned to 2.2.0 to
+      match the WinRT.Runtime already in the dependency graph (no version skew).
+    -->
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
     <!-- InProcCom pulls in 130+MB of native pdbs; only need it for actually *running* the spike.
          Comment out for compile-only AOT verification; uncomment for runtime smoke on Windows. -->
     <!-- <PackageReference Include="Microsoft.WindowsPackageManager.InProcCom" Version="1.29.190-preview" /> -->
