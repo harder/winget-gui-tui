@@ -25,6 +25,11 @@ public sealed class App : Runnable
     private readonly Label _searchHint;
     private CancellationTokenSource _viewCts = new ();
     private CancellationTokenSource _detailCts = new ();
+
+    // Non-null only while an install/upgrade/uninstall (or batch) is in flight. Doubles as the
+    // "an operation is running" gate for Esc-to-cancel — distinct from _viewCts/_detailCts, which
+    // cover list/detail refreshes that already cancel implicitly on navigation.
+    private CancellationTokenSource? _opCts;
     private object? _spinnerTimer;
     private bool _initialLoadDone;
 
@@ -740,8 +745,25 @@ public sealed class App : Runnable
 
         switch (key.KeyCode)
         {
-            case KeyCode.Q:
             case KeyCode.Esc:
+
+                // While an operation is in flight, Esc cancels it (COM aborts cooperatively)
+                // rather than quitting. With nothing running, Esc quits as before.
+                if (_opCts is { } opCts)
+                {
+                    opCts.Cancel ();
+                    _state.StatusMessage = "Cancelling…";
+                    RefreshStatusBar ();
+                    key.Handled = true;
+
+                    return;
+                }
+
+                RequestStop ();
+                key.Handled = true;
+
+                return;
+            case KeyCode.Q:
                 RequestStop ();
                 key.Handled = true;
 
@@ -1148,15 +1170,33 @@ public sealed class App : Runnable
             return;
         }
 
+        // Share the single-operation gate so Esc cancels the batch (the in-flight item aborts via
+        // its token; the loop then stops on the next iteration). Refuse to start atop another op.
+        if (_opCts is not null)
+        {
+            return;
+        }
+
+        _opCts = new ();
+        CancellationToken ct = _opCts.Token;
         string [] ids = [.. _state.BatchSelected];
 
         Task.Run (async () =>
                   {
+                      bool cancelled = false;
+
                       foreach (string id in ids)
                       {
+                          if (ct.IsCancellationRequested)
+                          {
+                              cancelled = true;
+
+                              break;
+                          }
+
                           App?.Invoke (() =>
                                        {
-                                           _state.StatusMessage = $"Upgrading {id}…";
+                                           _state.StatusMessage = $"Upgrading {id}… · Esc to cancel";
                                            _state.Loading = true;
                                            RefreshStatusBar ();
                                        });
@@ -1167,7 +1207,13 @@ public sealed class App : Runnable
                           {
                               // Per-item progress would fight the batch loop's own status line; the
                               // loop reports "Upgrading {id}…" per package instead.
-                              result = await _state.Backend.UpgradeAsync (id, null, CancellationToken.None);
+                              result = await _state.Backend.UpgradeAsync (id, null, ct);
+                          }
+                          catch (OperationCanceledException)
+                          {
+                              cancelled = true;
+
+                              break;
                           }
                           catch (Exception ex)
                           {
@@ -1191,8 +1237,17 @@ public sealed class App : Runnable
 
                       App?.Invoke (() =>
                                    {
+                                       _opCts?.Dispose ();
+                                       _opCts = null;
                                        _state.BatchSelected.Clear ();
                                        _state.Loading = false;
+
+                                       if (cancelled)
+                                       {
+                                           _state.StatusMessage = "Cancelled";
+                                           _state.StatusIsError = false;
+                                       }
+
                                        TriggerRefresh ();
                                    });
                   });
@@ -1200,7 +1255,17 @@ public sealed class App : Runnable
 
     private void RunOperation (string activity, Func<IProgress<OpProgress>, CancellationToken, Task<OpResult>> op)
     {
-        _state.StatusMessage = activity;
+        // One operation at a time: a second request while one is in flight is ignored, which
+        // keeps _opCts (and the Esc-cancel target) unambiguous and avoids leaking a CTS.
+        if (_opCts is not null)
+        {
+            return;
+        }
+
+        _opCts = new ();
+        CancellationToken ct = _opCts.Token;
+
+        _state.StatusMessage = $"{activity} · Esc to cancel";
         _state.Loading = true;
         _state.StatusIsError = false;
         _state.OpProgress = null;
@@ -1210,11 +1275,16 @@ public sealed class App : Runnable
 
         Task.Run (async () =>
                   {
-                      OpResult result;
+                      OpResult? result = null;
+                      bool cancelled = false;
 
                       try
                       {
-                          result = await op (progress, CancellationToken.None);
+                          result = await op (progress, ct);
+                      }
+                      catch (OperationCanceledException)
+                      {
+                          cancelled = true;
                       }
                       catch (Exception ex)
                       {
@@ -1228,14 +1298,25 @@ public sealed class App : Runnable
 
                       App?.Invoke (() =>
                                    {
+                                       _opCts?.Dispose ();
+                                       _opCts = null;
                                        _state.Loading = false;
                                        _state.OpProgress = null;
-                                       _state.StatusMessage = result.Success ? "Done" : result.Message;
-                                       _state.StatusIsError = !result.Success;
 
-                                       if (result.Operation.PackageId is { } id)
+                                       if (cancelled)
                                        {
-                                           _state.DetailCache.Remove (id);
+                                           _state.StatusMessage = "Cancelled";
+                                           _state.StatusIsError = false;
+                                       }
+                                       else
+                                       {
+                                           _state.StatusMessage = result!.Success ? "Done" : result.Message;
+                                           _state.StatusIsError = !result.Success;
+
+                                           if (result.Operation.PackageId is { } id)
+                                           {
+                                               _state.DetailCache.Remove (id);
+                                           }
                                        }
 
                                        TriggerRefresh ();
