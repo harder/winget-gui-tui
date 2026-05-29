@@ -26,15 +26,15 @@ For quick iteration without AOT: `dotnet run -f net10.0-windows10.0.26100.0`.
 
 ## P0 — Foundational COM runtime (must pass first)
 
-- [ ] **AOT publish succeeds** and produces a native exe; `coreclr.dll` is absent (true AOT, not self-contained).
-- [ ] **No `InvalidCastException` anywhere at runtime.** The whole backend uses indexed `Materialize<T>` instead of `foreach` over projected collections (the spike's AOT rule). Exercise search/list/upgrades/show and confirm none throw the spike's original cast error.
-- [ ] **Default backend = COM** on the Windows build with no flags (not CLI). Sanity: search is fast/structured, IDs are never truncated with `…`.
-- [ ] **Flag selection** works: `--cli`, `--com`, `--mock` pick the right backend; **`--cli` wins when both `--cli` and `--com` are passed** (precedence `--mock > --cli > --com > default`).
-- [ ] **Search** (`/`) returns real catalog results with version + source columns.
-- [ ] **Installed** tab lists installed packages with correct installed versions.
-- [ ] **Upgrades** tab shows only packages with an available update, with the Available column populated.
-- [ ] **Details** panel: selecting a row fetches metadata (publisher, description, homepage, license, release-notes URL).
-- [ ] **Source filter** (`f`) cycles All / winget / msstore and re-queries correctly.
+- [x] **AOT publish succeeds** and produces a native exe; `coreclr.dll` is absent (true AOT, not self-contained). *(23.3 MB exe; verified coreclr.dll absent. On an ARM64 host the publish must run inside `Enter-VsDevShell -DevCmdArguments "-arch=x64 -host_arch=arm64"` with the VS Installer dir on PATH — ILC 10.0.8 calls bare `vswhere.exe`.)*
+- [x] **No `InvalidCastException` anywhere at runtime.** The whole backend uses indexed `Materialize<T>` instead of `foreach` over projected collections (the spike's AOT rule). Exercise search/list/upgrades/show and confirm none throw the spike's original cast error. *(Clean across search, installed, upgrades, and details. Spike re-confirmed the indexed pattern on this host.)*
+- [x] **Default backend = COM** on the Windows build with no flags (not CLI). Sanity: search is fast/structured, IDs are never truncated with `…`. *(No fallback note on launch; catalog search returns full structured IDs across winget+msstore. The `…` in the table is Terminal.Gui column clipping, not data truncation.)*
+- [x] **Flag selection** works: `--cli`, `--com`, `--mock` pick the right backend; **`--cli` wins when both `--cli` and `--com` are passed** (precedence `--mock > --cli > --com > default`). *(`--mock --cli --com` → 10 mock pkgs; `--cli --com` → CLI backend, V reports COM-only on real packages.)*
+- [x] **Search** (Search tab `1`, then `/`) returns real catalog results with version + source columns. *(18 results for "powertoys" across winget + msstore.)*
+- [x] **Installed** tab lists installed packages with correct installed versions. *(248 packages; PowerToys 0.98.1 etc., correlated via COM LocalCatalogs composite.)*
+- [x] **Upgrades** tab shows only packages with an available update, with the Available column populated.
+- [x] **Details** panel: selecting a row fetches metadata (publisher, description, homepage, license, release-notes URL). *(Verified on Fefedu973.UniversalSearchSuggestions: publisher, MIT license, homepage + release-notes URLs, description all populated.)*
+- [x] **Source filter** (`f`) cycles All / winget / msstore and re-queries correctly. *(Functional pass. Cosmetic follow-ups: msstore Source cell unreadable when row highlighted — Accent-on-Accent contrast bug; Source column blank under single-source filter; per-row detail fetch stalled 30–60s for later rows under winget filter — logged to P2 perf watch.)*
 
 ## P1 — Operations + the two new features
 
@@ -79,8 +79,8 @@ Operations (pick a small, safe package to install/uninstall, e.g. a CLI tool):
 
 **Richer detail panel** (COM):
 
-- [ ] The detail panel for a package shows the extra manifest fields when present: **Tags**, **Product code**, **Family name**, a clickable **Support** link, and **Documentation** links — in addition to the existing fields. Verify the links open.
-- [ ] Packages without these fields don't render empty rows (the lines are omitted when absent).
+- [ ] ❌ **FAILS** — the detail panel for a package shows the extra manifest fields when present: **Tags**, **Product code**, **Family name**, a clickable **Support** link, and **Documentation** links. *Confirmed broken: Microsoft.PowerToys (which has 10 Tags, a PublisherSupportUrl, and a Wiki Documentation link per `winget show` and the spike) renders NONE of them. The spike proved the COM data is present and readable via the backend's indexed pattern from a SINGLE winget-catalog connect, so the suspect is `ComBackend.ShowAsync`'s COMPOSITE-`All` catalog path. Root cause NOT yet confirmed — needs one `--comshow` dump on Windows with a healthy COM server (see HANDOFF.md). Do not "fix" until confirmed.*
+- [x] Packages without these fields don't render empty rows (the lines are omitted when absent). *(Confirmed — absent fields cleanly omitted.)*
 
 **Live progress bar** (the headline feature — also tests `.Progress` delegate marshaling under AOT, the one CCW-callback unknown):
 
