@@ -264,15 +264,17 @@ public sealed class ComBackend : IBackend
 
         if (!string.IsNullOrEmpty (version))
         {
+            // Explicit version: resolve exactly that. Do NOT fall back to a different version —
+            // a fallback would compute the preview from the wrong installer while the confirm
+            // dialog still says "Install X <version>".
             PackageVersionId? vid = FindVersionId (pkg, version);
             versionInfo = vid is null ? null : SafeGetVersionInfo (pkg, vid);
         }
         else
         {
-            versionInfo = SafeDefaultInstallVersion (pkg);
+            // Latest: the default-install version, else the installed version.
+            versionInfo = SafeDefaultInstallVersion (pkg) ?? SafeInstalledVersion (pkg);
         }
-
-        versionInfo ??= SafeInstalledVersion (pkg);
 
         if (versionInfo is null)
         {

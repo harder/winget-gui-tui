@@ -30,6 +30,10 @@ public sealed class App : Runnable
     // "an operation is running" gate for Esc-to-cancel — distinct from _viewCts/_detailCts, which
     // cover list/detail refreshes that already cancel implicitly on navigation.
     private CancellationTokenSource? _opCts;
+
+    // True while a short preflight fetch (version list / installer preview) is running, so a
+    // rapid second trigger can't queue a duplicate modal or race the status line.
+    private bool _preflightBusy;
     private object? _spinnerTimer;
     private bool _initialLoadDone;
 
@@ -1115,11 +1119,14 @@ public sealed class App : Runnable
     /// </summary>
     private void FetchThen<T> (string activity, Func<CancellationToken, Task<T>> fetch, Action<T> onResult)
     {
-        if (_opCts is not null)
+        // Serialize preflight fetches and don't start one atop a running operation: prevents a
+        // rapid double-trigger from queuing a second modal behind the first.
+        if (_opCts is not null || _preflightBusy)
         {
             return;
         }
 
+        _preflightBusy = true;
         _state.StatusMessage = activity;
         _state.Loading = true;
         _state.StatusIsError = false;
@@ -1137,6 +1144,7 @@ public sealed class App : Runnable
                       {
                           App?.Invoke (() =>
                                        {
+                                           _preflightBusy = false;
                                            _state.Loading = false;
                                            _state.StatusMessage = $"Error: {ex.Message}";
                                            _state.StatusIsError = true;
@@ -1148,6 +1156,9 @@ public sealed class App : Runnable
 
                       App?.Invoke (() =>
                                    {
+                                       // Clear the gate before onResult so its (modal) flow — and any
+                                       // RunOperation it starts — isn't blocked by this guard.
+                                       _preflightBusy = false;
                                        _state.Loading = false;
                                        _state.StatusMessage = string.Empty;
                                        RefreshStatusBar ();
