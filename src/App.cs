@@ -1054,26 +1054,121 @@ public sealed class App : Runnable
             return;
         }
 
-        if (!specificVersion)
+        if (specificVersion)
         {
-            if (!Confirm ("Install", $"Install {p.Name}?"))
+            BeginVersionPick (p);
+        }
+        else
+        {
+            ConfirmAndInstall (p, null);
+        }
+    }
+
+    /// <summary>
+    /// Fetch the available versions, then let the user pick one (real list from the backend) and
+    /// continue to the install confirm. Falls back to the free-text prompt when the backend can't
+    /// enumerate versions (e.g. the CLI backend returns an empty list).
+    /// </summary>
+    private void BeginVersionPick (Package p)
+    {
+        FetchThen (
+            "Loading versions…",
+            ct => _state.Backend.ListVersionsAsync (p.Id, ct),
+            versions =>
             {
-                return;
-            }
+                string? chosen = versions.Count > 0 ? PickVersion (p, versions) : PromptForVersion (p);
 
-            RunOperation ($"Installing {p.Name}", (prog, ct) => _state.Backend.InstallAsync (p.Id, null, prog, ct));
+                if (!string.IsNullOrEmpty (chosen))
+                {
+                    ConfirmAndInstall (p, chosen);
+                }
+            });
+    }
 
-            return;
-        }
+    /// <summary>
+    /// Fetch the applicable-installer preview, show it in the confirm dialog
+    /// (e.g. "Install X? \n MSI · x64 · machine · admin"), then install on confirm.
+    /// </summary>
+    private void ConfirmAndInstall (Package p, string? version)
+    {
+        FetchThen (
+            "Checking installer…",
+            ct => _state.Backend.GetInstallerPreviewAsync (p.Id, version, ct),
+            preview =>
+            {
+                string title = version is null ? $"Install {p.Name}?" : $"Install {p.Name} {version}?";
+                string summary = preview?.Summary ?? string.Empty;
+                string body = string.IsNullOrEmpty (summary) ? title : $"{title}\n\n{summary}";
 
-        string? version = PromptForVersion (p);
+                if (Confirm ("Install", body))
+                {
+                    string activity = version is null ? $"Installing {p.Name}" : $"Installing {p.Name} {version}";
+                    RunOperation (activity, (prog, ct) => _state.Backend.InstallAsync (p.Id, version, prog, ct));
+                }
+            });
+    }
 
-        if (string.IsNullOrEmpty (version))
+    /// <summary>
+    /// Run a short async fetch on a background thread (with a transient status), then invoke the
+    /// continuation on the UI thread. Used to gather version/installer info before showing a modal
+    /// dialog without blocking the UI. Skipped if an operation is already in flight.
+    /// </summary>
+    private void FetchThen<T> (string activity, Func<CancellationToken, Task<T>> fetch, Action<T> onResult)
+    {
+        if (_opCts is not null)
         {
             return;
         }
 
-        RunOperation ($"Installing {p.Name} {version}", (prog, ct) => _state.Backend.InstallAsync (p.Id, version, prog, ct));
+        _state.StatusMessage = activity;
+        _state.Loading = true;
+        _state.StatusIsError = false;
+        RefreshStatusBar ();
+
+        Task.Run (async () =>
+                  {
+                      T result;
+
+                      try
+                      {
+                          result = await fetch (CancellationToken.None);
+                      }
+                      catch (Exception ex)
+                      {
+                          App?.Invoke (() =>
+                                       {
+                                           _state.Loading = false;
+                                           _state.StatusMessage = $"Error: {ex.Message}";
+                                           _state.StatusIsError = true;
+                                           RefreshStatusBar ();
+                                       });
+
+                          return;
+                      }
+
+                      App?.Invoke (() =>
+                                   {
+                                       _state.Loading = false;
+                                       _state.StatusMessage = string.Empty;
+                                       RefreshStatusBar ();
+                                       onResult (result);
+                                   });
+                  });
+    }
+
+    private string? PickVersion (Package p, IReadOnlyList<string> versions)
+    {
+        if (App is null)
+        {
+            return null;
+        }
+
+        VersionPickerDialog dlg = new (p.Name, versions);
+        App.Run (dlg);
+        string? value = dlg.Result;
+        dlg.Dispose ();
+
+        return value;
     }
 
     private void AskUpgrade (Package? p)

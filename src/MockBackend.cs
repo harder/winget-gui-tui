@@ -119,6 +119,37 @@ public sealed class MockBackend : IBackend
         return Task.FromResult<PackageDetail?> (detail);
     }
 
+    public Task<IReadOnlyList<string>> ListVersionsAsync (string id, CancellationToken ct)
+    {
+        Package? p = _searchResults.Concat (_installed)
+                                   .FirstOrDefault (x => x.Id.Equals (id, StringComparison.OrdinalIgnoreCase));
+        string baseV = p?.AvailableVersion ?? p?.Version ?? "1.0.0";
+
+        // A small, distinct, newest-first list so the version picker is exercisable on any host.
+        IReadOnlyList<string> versions = new [] { baseV, "1.1.0", "1.0.0", "0.9.0" }
+                                         .Distinct (StringComparer.OrdinalIgnoreCase)
+                                         .ToList ();
+
+        return Task.FromResult (versions);
+    }
+
+    public Task<InstallerPreview?> GetInstallerPreviewAsync (string id, string? version, CancellationToken ct)
+    {
+        Package? p = _searchResults.Concat (_installed)
+                                   .FirstOrDefault (x => x.Id.Equals (id, StringComparison.OrdinalIgnoreCase));
+
+        InstallerPreview preview = new ()
+        {
+            InstallerType = p?.Source == "msstore" ? "Store" : "MSI",
+            Architecture = "x64",
+            Scope = "machine",
+            RequiresElevation = true,
+            Version = version ?? p?.AvailableVersion ?? p?.Version
+        };
+
+        return Task.FromResult<InstallerPreview?> (preview);
+    }
+
     public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         await SimulateProgressAsync (progress, downloads: true, ct);

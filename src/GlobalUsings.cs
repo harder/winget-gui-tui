@@ -3,6 +3,7 @@
 // (almost never wanted) and Terminal.Gui.Drawing.Attribute (what we mean every time).
 
 global using System.Collections.Generic;
+global using System.Collections.ObjectModel;
 global using System.Diagnostics;
 global using System.IO;
 global using System.Linq;

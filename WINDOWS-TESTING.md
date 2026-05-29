@@ -46,6 +46,18 @@ Operations (pick a small, safe package to install/uninstall, e.g. a CLI tool):
 - [ ] **Uninstall** (`x`) works.
 - [ ] **Batch upgrade** (Upgrades tab → space to select → `U`) runs sequentially with per-item status.
 
+**Install preview dialog** (`i` — COM-only data):
+
+- [ ] Pressing `i` briefly shows "Checking installer…", then the confirm dialog includes an installer summary line, e.g. **`MSI · x64 · machine · admin`** (type · architecture · scope · elevation). Note: the COM API exposes **no download size**, so size is intentionally absent.
+- [ ] The summary reflects reality — e.g. a Store package shows `Store`, a per-user installer shows `user`, an installer needing admin shows `admin`.
+- [ ] If installer resolution fails (e.g. no applicable installer for this arch), the confirm still appears with just "Install X?" (no summary line) rather than erroring.
+
+**Real version picker** (`I`):
+
+- [ ] `I` shows a **selectable list of real versions** (newest first), not the free-text box, when the COM backend can enumerate them.
+- [ ] Picking a version → the install confirm shows that version + its installer preview → installs the chosen version.
+- [ ] (CLI backend, `--cli`) `I` falls back to the **free-text** version prompt, since the CLI path returns no version list.
+
 **Live progress bar** (the headline feature — also tests `.Progress` delegate marshaling under AOT, the one CCW-callback unknown):
 
 - [ ] During a real COM **install**, the status bar shows a determinate bar that **advances**, moving through **Downloading → Installing** phases with changing percentages (not stuck at 0%/100%).

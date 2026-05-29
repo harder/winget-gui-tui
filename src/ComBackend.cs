@@ -215,6 +215,158 @@ public sealed class ComBackend : IBackend
     }
 
     // ------------------------------------------------------------------------
+    // Version list + install preview
+    // ------------------------------------------------------------------------
+
+    public async Task<IReadOnlyList<string>> ListVersionsAsync (string id, CancellationToken ct)
+    {
+        CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: false, ct);
+
+        if (pkg is null)
+        {
+            return [];
+        }
+
+        List<string> versions = [];
+        HashSet<string> seen = new (StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            // AvailableVersions is newest-first. Indexed access via Materialize (AOT rule).
+            foreach (PackageVersionId vid in Materialize (pkg.AvailableVersions))
+            {
+                string v = vid.Version;
+
+                if (!string.IsNullOrWhiteSpace (v) && seen.Add (v))
+                {
+                    versions.Add (v);
+                }
+            }
+        }
+        catch
+        {
+            // Return whatever we collected before the version list became unreadable.
+        }
+
+        return versions;
+    }
+
+    public async Task<InstallerPreview?> GetInstallerPreviewAsync (string id, string? version, CancellationToken ct)
+    {
+        CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: false, ct);
+
+        if (pkg is null)
+        {
+            return null;
+        }
+
+        PackageVersionInfo? versionInfo;
+
+        if (!string.IsNullOrEmpty (version))
+        {
+            PackageVersionId? vid = FindVersionId (pkg, version);
+            versionInfo = vid is null ? null : SafeGetVersionInfo (pkg, vid);
+        }
+        else
+        {
+            versionInfo = SafeDefaultInstallVersion (pkg);
+        }
+
+        versionInfo ??= SafeInstalledVersion (pkg);
+
+        if (versionInfo is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            // Resolve the installer that *would* be chosen for default options on this machine.
+            PackageInstallerInfo installer = versionInfo.GetApplicableInstaller (new InstallOptions ());
+
+            if (installer is null)
+            {
+                return null;
+            }
+
+            return new InstallerPreview
+            {
+                InstallerType = TypeName (installer.InstallerType),
+                Architecture = ArchName (installer.Architecture),
+                Scope = ScopeName (installer.Scope),
+                RequiresElevation = RequiresElevation (installer),
+                Version = SafeVersion (versionInfo)
+            };
+        }
+        catch
+        {
+            // No applicable installer (e.g. arch mismatch) or the API isn't available — no preview.
+            return null;
+        }
+    }
+
+    private static PackageVersionInfo? SafeGetVersionInfo (CatalogPackage pkg, PackageVersionId vid)
+    {
+        try
+        {
+            return pkg.GetPackageVersionInfo (vid);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool RequiresElevation (PackageInstallerInfo installer)
+    {
+        try
+        {
+            return installer.ElevationRequirement == ElevationRequirement.ElevationRequired;
+        }
+        catch
+        {
+            // ElevationRequirement is a newer contract member; absent on older COM servers.
+            return false;
+        }
+    }
+
+    private static string? TypeName (PackageInstallerType t)
+        => t switch
+        {
+            PackageInstallerType.Msi => "MSI",
+            PackageInstallerType.Msix => "MSIX",
+            PackageInstallerType.Exe => "EXE",
+            PackageInstallerType.MSStore => "Store",
+            PackageInstallerType.Inno => "Inno",
+            PackageInstallerType.Nullsoft => "Nullsoft",
+            PackageInstallerType.Wix => "WiX",
+            PackageInstallerType.Burn => "Burn",
+            PackageInstallerType.Zip => "Zip",
+            PackageInstallerType.Portable => "Portable",
+            PackageInstallerType.Font => "Font",
+            _ => null
+        };
+
+    private static string? ArchName (Windows.System.ProcessorArchitecture a)
+        => a switch
+        {
+            Windows.System.ProcessorArchitecture.X64 => "x64",
+            Windows.System.ProcessorArchitecture.X86 => "x86",
+            Windows.System.ProcessorArchitecture.Arm64 => "arm64",
+            Windows.System.ProcessorArchitecture.Arm => "arm",
+            Windows.System.ProcessorArchitecture.Neutral => "neutral",
+            _ => null
+        };
+
+    private static string? ScopeName (PackageInstallerScope s)
+        => s switch
+        {
+            PackageInstallerScope.System => "machine",
+            PackageInstallerScope.User => "user",
+            _ => null
+        };
+
+    // ------------------------------------------------------------------------
     // Writes
     // ------------------------------------------------------------------------
 

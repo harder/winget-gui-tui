@@ -48,6 +48,16 @@ public sealed partial class CliBackend : IBackend
         return ParseShow (id, output);
     }
 
+    // The CLI has no structured version list or applicable-installer query worth scraping, so
+    // these degrade: an empty version list makes the UI fall back to a free-text version prompt,
+    // and a null preview means the install confirm shows no installer summary line. The COM
+    // backend is the one that answers these.
+    public Task<IReadOnlyList<string>> ListVersionsAsync (string id, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<string>> ([]);
+
+    public Task<InstallerPreview?> GetInstallerPreviewAsync (string id, string? version, CancellationToken ct)
+        => Task.FromResult<InstallerPreview?> (null);
+
     // progress is unused: winget.exe only emits an ANSI progress bar to stdout, which we
     // capture as a whole rather than scrape. The COM backend is the one that reports progress.
     public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)

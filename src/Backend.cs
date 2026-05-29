@@ -8,6 +8,16 @@ public interface IBackend
     Task<IReadOnlyList<Package>> ListUpgradesAsync (SourceFilter source, CancellationToken ct);
     Task<PackageDetail?> ShowAsync (string id, CancellationToken ct);
 
+    // Available versions for a package, newest first. Drives the version picker. Backends that
+    // can't enumerate versions (CLI) return an empty list, in which case the UI falls back to a
+    // free-text version prompt.
+    Task<IReadOnlyList<string>> ListVersionsAsync (string id, CancellationToken ct);
+
+    // What would be installed (installer type / architecture / scope / elevation) for a package,
+    // optionally at a specific version. Shown in the install confirm dialog. Returns null when the
+    // backend can't resolve it (CLI), in which case the confirm shows no preview line.
+    Task<InstallerPreview?> GetInstallerPreviewAsync (string id, string? version, CancellationToken ct);
+
     // The install/upgrade/uninstall operations optionally report structured progress through
     // `progress`. Backends that can't (CLI) ignore it; the COM backend maps the WinGet COM
     // progress events onto OpProgress; the mock backend synthesizes a download→install ramp.

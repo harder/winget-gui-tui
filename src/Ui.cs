@@ -360,6 +360,60 @@ public sealed class VersionInputDialog : Runnable<string?>
 }
 
 /// <summary>
+/// Modal that lets the user pick a real version from a list (newest first), used when the backend
+/// can enumerate available versions (the COM backend). Falls back to <see cref="VersionInputDialog"/>
+/// when no versions are available (e.g. the CLI backend). Result is the chosen version, or null on cancel.
+/// </summary>
+public sealed class VersionPickerDialog : Runnable<string?>
+{
+    public VersionPickerDialog (string packageName, IReadOnlyList<string> versions)
+    {
+        Title = $" Select version of {packageName} ";
+        BorderStyle = LineStyle.Rounded;
+        Width = 60;
+        Height = Math.Clamp (versions.Count + 6, 10, 22);
+        X = Pos.Center ();
+        Y = Pos.Center ();
+        SchemeName = Theme.SurfaceSchemeName;
+        Arrangement = ViewArrangement.Movable;
+
+        Label prompt = new () { X = 1, Y = 0, Text = "Pick a version (newest first):" };
+
+        ListView list = new ()
+        {
+            X = 1,
+            Y = 1,
+            Width = Dim.Fill (1),
+            Height = Dim.Fill (2),
+            SchemeName = Theme.SurfaceSchemeName
+        };
+        list.SetSource (new ObservableCollection<string> (versions));
+        list.SelectedItem = 0;
+
+        Button install = new () { X = Pos.Center () - 8, Y = Pos.AnchorEnd (1), Text = "_Install", IsDefault = true };
+        Button cancel = new () { X = Pos.Center () + 2, Y = Pos.AnchorEnd (1), Text = "Cancel" };
+
+        install.Accepting += (_, e) =>
+                             {
+                                 int idx = list.SelectedItem ?? -1;
+                                 Result = idx >= 0 && idx < versions.Count ? versions [idx] : null;
+                                 RequestStop ();
+                                 e.Handled = true;
+                             };
+
+        cancel.Accepting += (_, e) =>
+                            {
+                                Result = null;
+                                RequestStop ();
+                                e.Handled = true;
+                            };
+
+        Add (prompt, list, install, cancel);
+        list.SetFocus ();
+    }
+}
+
+/// <summary>
 /// Help overlay shown by pressing <c>?</c>. Mirrors the contents from src/ui.rs::render_help.
 /// </summary>
 public sealed class HelpDialog : Runnable

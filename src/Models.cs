@@ -222,3 +222,58 @@ public readonly record struct OpProgress (OpPhase Phase, double Fraction)
             _ => string.Empty
         };
 }
+
+/// <summary>
+/// What would actually be installed for a package, shown in the install confirm dialog. Sourced
+/// from the WinGet COM API's applicable-installer resolution (type/arch/scope/elevation). Note:
+/// the COM API exposes no installer download size, so size is intentionally absent. Backends that
+/// can't resolve this (CLI) return null; the mock fills representative values.
+/// </summary>
+public sealed class InstallerPreview
+{
+    /// <summary>Friendly installer type, e.g. "MSI", "EXE", "MSIX", "Store".</summary>
+    public string? InstallerType { get; init; }
+
+    /// <summary>Friendly architecture, e.g. "x64", "arm64", "x86".</summary>
+    public string? Architecture { get; init; }
+
+    /// <summary>Install scope: "machine", "user", or null when unknown.</summary>
+    public string? Scope { get; init; }
+
+    /// <summary>True when the installer requires elevation (admin).</summary>
+    public bool RequiresElevation { get; init; }
+
+    /// <summary>The version this installer resolves to, when known.</summary>
+    public string? Version { get; init; }
+
+    /// <summary>One-line summary like <c>MSI · x64 · machine · admin</c> for the confirm dialog.</summary>
+    public string Summary
+    {
+        get
+        {
+            List<string> parts = [];
+
+            if (!string.IsNullOrWhiteSpace (InstallerType))
+            {
+                parts.Add (InstallerType);
+            }
+
+            if (!string.IsNullOrWhiteSpace (Architecture))
+            {
+                parts.Add (Architecture);
+            }
+
+            if (!string.IsNullOrWhiteSpace (Scope))
+            {
+                parts.Add (Scope);
+            }
+
+            if (RequiresElevation)
+            {
+                parts.Add ("admin");
+            }
+
+            return string.Join (" · ", parts);
+        }
+    }
+}
