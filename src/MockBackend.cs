@@ -113,35 +113,158 @@ public sealed class MockBackend : IBackend
                           + "When running on Windows with winget installed, real manifest data is fetched here. ",
             Homepage = $"https://example.invalid/{p.Id}",
             License = "MIT",
-            ReleaseNotesUrl = $"https://example.invalid/{p.Id}/releases"
+            ReleaseNotesUrl = $"https://example.invalid/{p.Id}/releases",
+            SupportUrl = $"https://example.invalid/{p.Id}/support",
+            Tags = ["mock", "cli", "utility"],
+            Documentation = [new ("Getting started", $"https://example.invalid/{p.Id}/docs")],
+            ProductCodes = [$"{{{p.Id}-0000}}"],
+            PackageFamilyNames = p.Source == "msstore" ? [$"{p.Id}_8wekyb3d8bbwe"] : null
         };
 
         return Task.FromResult<PackageDetail?> (detail);
     }
 
-    public Task<OpResult> InstallAsync (string id, string? version, CancellationToken ct)
-        => Task.FromResult (new OpResult
+    public Task<IReadOnlyList<string>> ListVersionsAsync (string id, CancellationToken ct)
+    {
+        Package? p = _searchResults.Concat (_installed)
+                                   .FirstOrDefault (x => x.Id.Equals (id, StringComparison.OrdinalIgnoreCase));
+        string baseV = p?.AvailableVersion ?? p?.Version ?? "1.0.0";
+
+        // A small, distinct, newest-first list so the version picker is exercisable on any host.
+        IReadOnlyList<string> versions = new [] { baseV, "1.1.0", "1.0.0", "0.9.0" }
+                                         .Distinct (StringComparer.OrdinalIgnoreCase)
+                                         .ToList ();
+
+        return Task.FromResult (versions);
+    }
+
+    public Task<InstallerPreview?> GetInstallerPreviewAsync (string id, string? version, CancellationToken ct)
+    {
+        Package? p = _searchResults.Concat (_installed)
+                                   .FirstOrDefault (x => x.Id.Equals (id, StringComparison.OrdinalIgnoreCase));
+
+        InstallerPreview preview = new ()
+        {
+            InstallerType = p?.Source == "msstore" ? "Store" : "MSI",
+            Architecture = "x64",
+            Scope = "machine",
+            RequiresElevation = true,
+            Version = version ?? p?.AvailableVersion ?? p?.Version
+        };
+
+        return Task.FromResult<InstallerPreview?> (preview);
+    }
+
+    public Task<InstallVerification?> VerifyInstalledAsync (string id, CancellationToken ct)
+    {
+        // Deterministically fake a "corrupt" result for one package so the Issues path is visible.
+        bool corrupt = id.Contains ("Firefox", StringComparison.OrdinalIgnoreCase);
+
+        InstallVerification v = new ()
+        {
+            Outcome = corrupt ? VerifyOutcome.Issues : VerifyOutcome.Ok,
+            Checks =
+            [
+                new ("Registry entry", true, @"HKLM\…\Uninstall"),
+                new ("Install location", !corrupt, @"C:\Program Files\" + id),
+                new ("Install-location file", !corrupt, corrupt ? "missing: app.exe" : "app.exe")
+            ]
+        };
+
+        return Task.FromResult<InstallVerification?> (v);
+    }
+
+    public async Task<OpResult> InstallAsync (string id, string? version, InstallSettings? settings, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        await SimulateProgressAsync (progress, downloads: true, ct);
+
+        string note = settings is null
+                          ? string.Empty
+                          : $" [{settings.Scope}/{settings.Mode}/{settings.Architecture}{(string.IsNullOrWhiteSpace (settings.CustomArgs) ? string.Empty : $"/\"{settings.CustomArgs}\"")}]";
+
+        return new ()
         {
             Operation = new () { Kind = OperationKind.Install, PackageId = id, Version = version },
             Success = true,
-            Message = $"[mock] Installed {id}" + (version is null ? string.Empty : $" v{version}")
-        });
+            Message = $"[mock] Installed {id}" + (version is null ? string.Empty : $" v{version}") + note
+        };
+    }
 
-    public Task<OpResult> UninstallAsync (string id, CancellationToken ct)
-        => Task.FromResult (new OpResult
+    public async Task<OpResult> DownloadAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        // Download-only: a download ramp with no install phase.
+        if (progress is not null)
+        {
+            for (int i = 0; i <= 10; i++)
+            {
+                progress.Report (new (OpPhase.Downloading, i / 10.0));
+                await Task.Delay (55, ct);
+            }
+
+            progress.Report (new (OpPhase.Done, 1.0));
+        }
+
+        return new ()
+        {
+            Operation = new () { Kind = OperationKind.Download, PackageId = id, Version = version },
+            Success = true,
+            Message = $"[mock] Downloaded {id} to (mock path)"
+        };
+    }
+
+    public async Task<OpResult> UninstallAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        await SimulateProgressAsync (progress, downloads: false, ct);
+
+        return new ()
         {
             Operation = new () { Kind = OperationKind.Uninstall, PackageId = id },
             Success = true,
             Message = $"[mock] Uninstalled {id}"
-        });
+        };
+    }
 
-    public Task<OpResult> UpgradeAsync (string id, CancellationToken ct)
-        => Task.FromResult (new OpResult
+    public async Task<OpResult> UpgradeAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        await SimulateProgressAsync (progress, downloads: true, ct);
+
+        return new ()
         {
             Operation = new () { Kind = OperationKind.Upgrade, PackageId = id },
             Success = true,
             Message = $"[mock] Upgraded {id}"
-        });
+        };
+    }
+
+    /// <summary>
+    /// Synthesize a believable progress ramp so the status-bar progress UI can be exercised on
+    /// any host (the mock has no real work to do). Downloads ramp 0→1 then install ramps 0→1;
+    /// uninstall skips the download phase.
+    /// </summary>
+    private static async Task SimulateProgressAsync (IProgress<OpProgress>? progress, bool downloads, CancellationToken ct)
+    {
+        if (progress is null)
+        {
+            return;
+        }
+
+        if (downloads)
+        {
+            for (int i = 0; i <= 10; i++)
+            {
+                progress.Report (new (OpPhase.Downloading, i / 10.0));
+                await Task.Delay (55, ct);
+            }
+        }
+
+        for (int i = 0; i <= 10; i++)
+        {
+            progress.Report (new (OpPhase.Installing, i / 10.0));
+            await Task.Delay (45, ct);
+        }
+
+        progress.Report (new (OpPhase.Done, 1.0));
+    }
 
     public Task<OpResult> PinAsync (string id, CancellationToken ct)
     {

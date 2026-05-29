@@ -25,6 +25,15 @@ public sealed class App : Runnable
     private readonly Label _searchHint;
     private CancellationTokenSource _viewCts = new ();
     private CancellationTokenSource _detailCts = new ();
+
+    // Non-null only while an install/upgrade/uninstall (or batch) is in flight. Doubles as the
+    // "an operation is running" gate for Esc-to-cancel — distinct from _viewCts/_detailCts, which
+    // cover list/detail refreshes that already cancel implicitly on navigation.
+    private CancellationTokenSource? _opCts;
+
+    // True while a short preflight fetch (version list / installer preview) is running, so a
+    // rapid second trigger can't queue a duplicate modal or race the status line.
+    private bool _preflightBusy;
     private object? _spinnerTimer;
     private bool _initialLoadDone;
 
@@ -506,6 +515,7 @@ public sealed class App : Runnable
         _statusBar.Message = _state.StatusMessage;
         _statusBar.IsError = _state.StatusIsError;
         _statusBar.IsLoading = _state.Loading || _state.DetailLoading;
+        _statusBar.Op = _state.OpProgress;
         _statusBar.SetNeedsDraw ();
         _detailPanel.Mode = _state.Mode;
     }
@@ -739,8 +749,25 @@ public sealed class App : Runnable
 
         switch (key.KeyCode)
         {
-            case KeyCode.Q:
             case KeyCode.Esc:
+
+                // While an operation is in flight, Esc cancels it (COM aborts cooperatively)
+                // rather than quitting. With nothing running, Esc quits as before.
+                if (_opCts is { } opCts)
+                {
+                    opCts.Cancel ();
+                    _state.StatusMessage = "Cancelling…";
+                    RefreshStatusBar ();
+                    key.Handled = true;
+
+                    return;
+                }
+
+                RequestStop ();
+                key.Handled = true;
+
+                return;
+            case KeyCode.Q:
                 RequestStop ();
                 key.Handled = true;
 
@@ -902,6 +929,21 @@ public sealed class App : Runnable
                     key.Handled = true;
 
                     return;
+                case 'd':
+                    AskDownload (CurrentPackage ());
+                    key.Handled = true;
+
+                    return;
+                case 'A':
+                    AskAdvancedInstall (CurrentPackage ());
+                    key.Handled = true;
+
+                    return;
+                case 'V':
+                    AskVerify (CurrentPackage ());
+                    key.Handled = true;
+
+                    return;
                 case 'u':
                     AskUpgrade (CurrentPackage ());
                     key.Handled = true;
@@ -1031,26 +1073,312 @@ public sealed class App : Runnable
             return;
         }
 
-        if (!specificVersion)
+        if (specificVersion)
         {
-            if (!Confirm ("Install", $"Install {p.Name}?"))
+            BeginVersionPick (p);
+        }
+        else
+        {
+            ConfirmAndInstall (p, null);
+        }
+    }
+
+    /// <summary>
+    /// Fetch the available versions, then let the user pick one (real list from the backend) and
+    /// continue to the install confirm. Falls back to the free-text prompt when the backend can't
+    /// enumerate versions (e.g. the CLI backend returns an empty list).
+    /// </summary>
+    private void BeginVersionPick (Package p)
+    {
+        FetchThen (
+            "Loading versions…",
+            ct => _state.Backend.ListVersionsAsync (p.Id, ct),
+            versions =>
             {
-                return;
+                string? chosen = versions.Count > 0 ? PickVersion (p, versions) : PromptForVersion (p);
+
+                if (!string.IsNullOrEmpty (chosen))
+                {
+                    ConfirmAndInstall (p, chosen);
+                }
+            });
+    }
+
+    /// <summary>
+    /// Fetch the applicable-installer preview, show it in the confirm dialog
+    /// (e.g. "Install X? \n MSI · x64 · machine · admin"), then install on confirm.
+    /// </summary>
+    private void ConfirmAndInstall (Package p, string? version, InstallSettings? settings = null)
+    {
+        FetchThen (
+            "Checking installer…",
+            ct => _state.Backend.GetInstallerPreviewAsync (p.Id, version, ct),
+            preview =>
+            {
+                string title = version is null ? $"Install {p.Name}?" : $"Install {p.Name} {version}?";
+                List<string> lines = [];
+
+                if (!string.IsNullOrEmpty (preview?.Summary))
+                {
+                    lines.Add (preview!.Summary);
+                }
+
+                string optionsLine = settings is null ? string.Empty : DescribeSettings (settings);
+
+                if (optionsLine.Length > 0)
+                {
+                    lines.Add (optionsLine);
+                }
+
+                string body = lines.Count == 0 ? title : $"{title}\n\n{string.Join ("\n", lines)}";
+
+                if (Confirm ("Install", body))
+                {
+                    string activity = version is null ? $"Installing {p.Name}" : $"Installing {p.Name} {version}";
+                    RunOperation (activity, (prog, ct) => _state.Backend.InstallAsync (p.Id, version, settings, prog, ct));
+                }
+            });
+    }
+
+    private static string DescribeSettings (InstallSettings s)
+    {
+        List<string> parts = [];
+
+        if (s.Scope != InstallScopePref.Default)
+        {
+            parts.Add (s.Scope == InstallScopePref.Machine ? "machine" : "user");
+        }
+
+        if (s.Mode != InstallModePref.Default)
+        {
+            parts.Add (s.Mode.ToString ().ToLowerInvariant ());
+        }
+
+        if (s.Architecture != InstallArchPref.Default)
+        {
+            parts.Add (s.Architecture.ToString ().ToLowerInvariant ());
+        }
+
+        if (!string.IsNullOrWhiteSpace (s.CustomArgs))
+        {
+            parts.Add ($"custom: {s.CustomArgs}");
+        }
+
+        return parts.Count == 0 ? string.Empty : "Options: " + string.Join (" · ", parts);
+    }
+
+    /// <summary>Fetch the installer to disk without installing, reusing the operation progress bar.</summary>
+    private void AskDownload (Package? p)
+    {
+        if (p is null || App is null || GuardTruncatedId (p, "download"))
+        {
+            return;
+        }
+
+        if (!Confirm ("Download", $"Download the installer for {p.Name} without installing it?"))
+        {
+            return;
+        }
+
+        RunOperation ($"Downloading {p.Name}", (prog, ct) => _state.Backend.DownloadAsync (p.Id, null, prog, ct));
+    }
+
+    /// <summary>Open the advanced-options panel, then install the latest version with those options.</summary>
+    private void AskAdvancedInstall (Package? p)
+    {
+        if (p is null || App is null || GuardTruncatedId (p, "install"))
+        {
+            return;
+        }
+
+        InstallSettings? settings = PromptAdvancedOptions (p);
+
+        if (settings is null)
+        {
+            return; // cancelled
+        }
+
+        // All-default selection means "backend defaults" — normalize to null so it behaves
+        // identically to a plain install on every backend (no per-backend "Default" ambiguity).
+        ConfirmAndInstall (p, null, settings.IsDefault ? null : settings);
+    }
+
+    /// <summary>Run CheckInstalledStatus on a package and report whether its install is intact.</summary>
+    private void AskVerify (Package? p)
+    {
+        if (p is null || App is null || GuardTruncatedId (p, "verify"))
+        {
+            return;
+        }
+
+        FetchThen (
+            $"Verifying {p.Name}…",
+            ct => _state.Backend.VerifyInstalledAsync (p.Id, ct),
+            verification =>
+            {
+                if (verification is null)
+                {
+                    _state.StatusMessage = "Verify is only available on the COM backend.";
+                    _state.StatusIsError = false;
+                    RefreshStatusBar ();
+
+                    return;
+                }
+
+                ShowVerifyResult (p, verification);
+            });
+    }
+
+    private void ShowVerifyResult (Package p, InstallVerification v)
+    {
+        if (App is null)
+        {
+            return;
+        }
+
+        StringBuilder sb = new ();
+        sb.AppendLine (v.Summary);
+
+        int shown = 0;
+
+        foreach (VerifyCheck c in v.Checks)
+        {
+            if (shown++ >= 12)
+            {
+                sb.AppendLine ("…");
+
+                break;
             }
 
-            RunOperation ($"Installing {p.Name}", _ => _state.Backend.InstallAsync (p.Id, null, _));
-
-            return;
+            string detail = string.IsNullOrEmpty (c.Detail) ? string.Empty : $" — {c.Detail}";
+            sb.AppendLine ($"{(c.Ok ? "✓" : "✗")} {c.Label}{detail}");
         }
 
-        string? version = PromptForVersion (p);
+        MessageBox.Query (App, $"Verify: {p.Name}", sb.ToString ().TrimEnd (), "_OK");
+    }
 
-        if (string.IsNullOrEmpty (version))
+    private InstallSettings? PromptAdvancedOptions (Package p)
+    {
+        if (App is null)
+        {
+            return null;
+        }
+
+        AdvancedInstallDialog dlg = new (p.Name);
+        App.Run (dlg);
+        InstallSettings? result = dlg.Result;
+        dlg.Dispose ();
+
+        return result;
+    }
+
+    /// <summary>
+    /// Run a short async fetch on a background thread (with a transient status), then invoke the
+    /// continuation on the UI thread. Used to gather version/installer info before showing a modal
+    /// dialog without blocking the UI. Skipped if an operation is already in flight.
+    /// </summary>
+    private void FetchThen<T> (string activity, Func<CancellationToken, Task<T>> fetch, Action<T> onResult)
+    {
+        // Serialize preflight fetches and don't start one atop a running operation: prevents a
+        // rapid double-trigger from queuing a second modal behind the first.
+        if (_opCts is not null || _preflightBusy)
         {
             return;
         }
 
-        RunOperation ($"Installing {p.Name} {version}", _ => _state.Backend.InstallAsync (p.Id, version, _));
+        _preflightBusy = true;
+        _state.StatusMessage = activity;
+        _state.Loading = true;
+        _state.StatusIsError = false;
+        RefreshStatusBar ();
+        CancellationToken ct = _detailCts.Token;
+
+        Task.Run (async () =>
+                  {
+                      T result;
+
+                      try
+                      {
+                          result = await fetch (ct);
+                      }
+                      catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                      {
+                          App?.Invoke (() =>
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = string.Empty;
+                                           _state.StatusIsError = false;
+                                           RefreshStatusBar ();
+                                       });
+
+                          return;
+                      }
+                      catch (Exception ex)
+                      {
+                          App?.Invoke (() =>
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = $"Error: {ex.Message}";
+                                           _state.StatusIsError = true;
+                                           RefreshStatusBar ();
+                                       });
+
+                          return;
+                      }
+
+                      if (ct.IsCancellationRequested)
+                      {
+                          App?.Invoke (() =>
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = string.Empty;
+                                           _state.StatusIsError = false;
+                                           RefreshStatusBar ();
+                                       });
+
+                          return;
+                      }
+
+                      App?.Invoke (() =>
+                                   {
+                                       if (ct.IsCancellationRequested)
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = string.Empty;
+                                           _state.StatusIsError = false;
+                                           RefreshStatusBar ();
+
+                                           return;
+                                       }
+
+                                       // Clear the gate before onResult so its (modal) flow — and any
+                                       // RunOperation it starts — isn't blocked by this guard.
+                                       _preflightBusy = false;
+                                       _state.Loading = false;
+                                       _state.StatusMessage = string.Empty;
+                                       RefreshStatusBar ();
+                                       onResult (result);
+                                   });
+                  });
+    }
+
+    private string? PickVersion (Package p, IReadOnlyList<string> versions)
+    {
+        if (App is null)
+        {
+            return null;
+        }
+
+        VersionPickerDialog dlg = new (p.Name, versions);
+        App.Run (dlg);
+        string? value = dlg.Result;
+        dlg.Dispose ();
+
+        return value;
     }
 
     private void AskUpgrade (Package? p)
@@ -1065,7 +1393,7 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"Upgrading {p.Name}", _ => _state.Backend.UpgradeAsync (p.Id, _));
+        RunOperation ($"Upgrading {p.Name}", (prog, ct) => _state.Backend.UpgradeAsync (p.Id, prog, ct));
     }
 
     private void AskUninstall (Package? p)
@@ -1080,7 +1408,7 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"Uninstalling {p.Name}", _ => _state.Backend.UninstallAsync (p.Id, _));
+        RunOperation ($"Uninstalling {p.Name}", (prog, ct) => _state.Backend.UninstallAsync (p.Id, prog, ct));
     }
 
     private void TogglePin (Package? p)
@@ -1098,9 +1426,9 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"{label}ning {p.Name}", _ => pinned
-                                                        ? _state.Backend.UnpinAsync (p.Id, _)
-                                                        : _state.Backend.PinAsync (p.Id, _));
+        RunOperation ($"{label}ning {p.Name}", (_, ct) => pinned
+                                                              ? _state.Backend.UnpinAsync (p.Id, ct)
+                                                              : _state.Backend.PinAsync (p.Id, ct));
     }
 
     private void ToggleBatchSelect (Package? p)
@@ -1147,15 +1475,33 @@ public sealed class App : Runnable
             return;
         }
 
+        // Share the single-operation gate so Esc cancels the batch (the in-flight item aborts via
+        // its token; the loop then stops on the next iteration). Refuse to start atop another op.
+        if (_opCts is not null)
+        {
+            return;
+        }
+
+        _opCts = new ();
+        CancellationToken ct = _opCts.Token;
         string [] ids = [.. _state.BatchSelected];
 
         Task.Run (async () =>
                   {
+                      bool cancelled = false;
+
                       foreach (string id in ids)
                       {
+                          if (ct.IsCancellationRequested)
+                          {
+                              cancelled = true;
+
+                              break;
+                          }
+
                           App?.Invoke (() =>
                                        {
-                                           _state.StatusMessage = $"Upgrading {id}…";
+                                           _state.StatusMessage = $"Upgrading {id}… · Esc to cancel";
                                            _state.Loading = true;
                                            RefreshStatusBar ();
                                        });
@@ -1164,7 +1510,15 @@ public sealed class App : Runnable
 
                           try
                           {
-                              result = await _state.Backend.UpgradeAsync (id, CancellationToken.None);
+                              // Per-item progress would fight the batch loop's own status line; the
+                              // loop reports "Upgrading {id}…" per package instead.
+                              result = await _state.Backend.UpgradeAsync (id, null, ct);
+                          }
+                          catch (OperationCanceledException)
+                          {
+                              cancelled = true;
+
+                              break;
                           }
                           catch (Exception ex)
                           {
@@ -1178,6 +1532,11 @@ public sealed class App : Runnable
 
                           App?.Invoke (() =>
                                        {
+                                           if (result.Success)
+                                           {
+                                               _state.DetailCache.Remove (id);
+                                           }
+
                                            _state.StatusMessage = result.Success
                                                                       ? $"Upgraded {id}"
                                                                       : $"Failed: {id}";
@@ -1188,27 +1547,54 @@ public sealed class App : Runnable
 
                       App?.Invoke (() =>
                                    {
+                                       _opCts?.Dispose ();
+                                       _opCts = null;
                                        _state.BatchSelected.Clear ();
                                        _state.Loading = false;
+
+                                       if (cancelled)
+                                       {
+                                           _state.StatusMessage = "Cancelled";
+                                           _state.StatusIsError = false;
+                                       }
+
                                        TriggerRefresh ();
                                    });
                   });
     }
 
-    private void RunOperation (string activity, Func<CancellationToken, Task<OpResult>> op)
+    private void RunOperation (string activity, Func<IProgress<OpProgress>, CancellationToken, Task<OpResult>> op)
     {
-        _state.StatusMessage = activity;
+        // One operation at a time: a second request while one is in flight is ignored, which
+        // keeps _opCts (and the Esc-cancel target) unambiguous and avoids leaking a CTS.
+        if (_opCts is not null)
+        {
+            return;
+        }
+
+        _opCts = new ();
+        CancellationToken ct = _opCts.Token;
+
+        _state.StatusMessage = $"{activity} · Esc to cancel";
         _state.Loading = true;
         _state.StatusIsError = false;
+        _state.OpProgress = null;
         RefreshStatusBar ();
+
+        IProgress<OpProgress> progress = new UiProgress (this);
 
         Task.Run (async () =>
                   {
-                      OpResult result;
+                      OpResult? result = null;
+                      bool cancelled = false;
 
                       try
                       {
-                          result = await op (CancellationToken.None);
+                          result = await op (progress, ct);
+                      }
+                      catch (OperationCanceledException)
+                      {
+                          cancelled = true;
                       }
                       catch (Exception ex)
                       {
@@ -1222,18 +1608,61 @@ public sealed class App : Runnable
 
                       App?.Invoke (() =>
                                    {
+                                       _opCts?.Dispose ();
+                                       _opCts = null;
                                        _state.Loading = false;
-                                       _state.StatusMessage = result.Success ? "Done" : result.Message;
-                                       _state.StatusIsError = !result.Success;
+                                       _state.OpProgress = null;
 
-                                       if (result.Operation.PackageId is { } id)
+                                       if (cancelled)
                                        {
-                                           _state.DetailCache.Remove (id);
+                                           _state.StatusMessage = "Cancelled";
+                                           _state.StatusIsError = false;
+                                       }
+                                       else
+                                       {
+                                           _state.StatusMessage = result!.Success ? "Done" : result.Message;
+                                           _state.StatusIsError = !result.Success;
+
+                                           if (result.Operation.PackageId is { } id)
+                                           {
+                                               _state.DetailCache.Remove (id);
+                                           }
                                        }
 
                                        TriggerRefresh ();
                                    });
                   });
+    }
+
+    /// <summary>
+    /// Apply a backend progress sample to the status bar. Runs on the UI thread (marshaled by
+    /// <see cref="UiProgress"/>). Ignored once the operation has settled so a late report can't
+    /// resurrect the progress bar after the final "Done".
+    /// </summary>
+    private void OnOpProgress (OpProgress value)
+    {
+        // Gate on the operation CTS, not _state.Loading: Loading is also toggled by ordinary
+        // list/detail refreshes, so a concurrent refresh could otherwise drop op samples or let
+        // a late report through after the op settled. _opCts is non-null iff an op is in flight
+        // and is cleared before the final refresh.
+        if (_opCts is null)
+        {
+            return;
+        }
+
+        _state.OpProgress = value;
+        RefreshStatusBar ();
+    }
+
+    private void ReportProgress (OpProgress value) => App?.Invoke (() => OnOpProgress (value));
+
+    /// <summary>
+    /// <see cref="IProgress{T}"/> bridge that marshals backend progress (raised on a background
+    /// or COM thread) onto the Terminal.Gui UI thread before touching view state.
+    /// </summary>
+    private sealed class UiProgress (App owner) : IProgress<OpProgress>
+    {
+        public void Report (OpProgress value) => owner.ReportProgress (value);
     }
 
     private bool Confirm (string title, string message)

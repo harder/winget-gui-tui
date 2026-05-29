@@ -65,14 +65,15 @@ if (args.Length > 0 && args [0] is "--dump")
     return;
 }
 
-bool useMock = args.Any (a => a is "--mock" or "-m") || !IsWingetAvailable ();
-
-if (useMock && !args.Any (a => a is "--mock" or "-m"))
-{
-    Console.Error.WriteLine ("winget not found on PATH — falling back to mock backend. Run with `winget` available to drive the real CLI.");
-}
-
-IBackend backend = useMock ? new MockBackend () : new CliBackend ();
+// Backend selection (precedence: --mock > --cli > --com > default):
+//   --mock / -m   the in-memory mock (cross-platform dev/parity)
+//   --cli         the winget.exe CLI parser
+//   --com         the WinGet COM API backend (Windows builds only)
+//   (default)     COM on Windows builds, CLI elsewhere
+// These are preferences, not hard guarantees: a requested backend that can't run degrades
+// (with a stderr note) — --com on a non-Windows build → CLI, and any CLI path with no winget
+// on PATH → mock. Scripts that need a guaranteed backend should check that note.
+IBackend backend = SelectBackend (args);
 
 Theme.Register ();
 
@@ -83,6 +84,58 @@ window.Dispose ();
 app.Dispose ();
 
 return;
+
+static IBackend SelectBackend (string [] args)
+{
+    bool wantMock = args.Any (a => a is "--mock" or "-m");
+    bool wantCli = args.Any (a => a is "--cli");
+    bool wantCom = args.Any (a => a is "--com");
+
+    if (wantMock)
+    {
+        return new MockBackend ();
+    }
+
+#if WINGET_COM
+    // Precedence: an explicit --cli always wins over --com (and over the Windows COM default).
+    // So COM is chosen only when --cli was NOT passed and either --com was, or we're the
+    // default on Windows.
+    if (!wantCli && (wantCom || OperatingSystem.IsWindows ()))
+    {
+        try
+        {
+            return new ComBackend ();
+        }
+        catch (Exception ex)
+        {
+            // COM server not registered / activation failed — degrade gracefully rather than crash.
+            Console.Error.WriteLine ($"COM backend unavailable ({ex.Message}); falling back to the CLI backend.");
+        }
+    }
+#else
+    if (wantCom)
+    {
+        Console.Error.WriteLine ("--com is only available in the Windows build (net10.0-windows…); using the CLI backend instead.");
+    }
+#endif
+
+    // CLI path (explicit --cli, or the non-Windows / COM-unavailable default).
+    if (!IsWingetAvailable ())
+    {
+        if (!wantCli)
+        {
+            Console.Error.WriteLine ("winget not found on PATH — falling back to mock backend. Run with `winget` available to drive the real CLI.");
+        }
+        else
+        {
+            Console.Error.WriteLine ("winget not found on PATH — mock backend used despite --cli.");
+        }
+
+        return new MockBackend ();
+    }
+
+    return new CliBackend ();
+}
 
 static bool IsWingetAvailable ()
 {

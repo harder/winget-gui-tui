@@ -1,7 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <!--
+      Two TFMs:
+        net10.0                       - cross-platform; mock/CLI backends. The dev-iteration
+                                        target on Linux/macOS where winget doesn't exist.
+        net10.0-windows10.0.26100.0   - the real Windows deploy target. Adds the COM backend,
+                                        which needs this TFM to reference the WinGet COM
+                                        projection (ships under lib/net8.0-windows10.0.26100.0/).
+      Build/run a specific TFM with the -f flag, e.g.:
+        dotnet run -f net10.0 (pass the mock flag after a double dash)   [Linux dev]
+        dotnet publish -f net10.0-windows10.0.26100.0 -r win-x64        [Windows release]
+    -->
+    <TargetFrameworks>net10.0;net10.0-windows10.0.26100.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
@@ -12,6 +23,8 @@
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
     <StripSymbols>true</StripSymbols>
+    <!-- Lets the Windows TFM restore/build from a non-Windows host (no-op on Windows). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!--
       Both Windows architectures are first-class deploy targets.
       The non-Windows RIDs are only useful for dev iteration with the mock backend
@@ -19,6 +32,21 @@
     -->
     <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
+
+  <!--
+    Windows-TFM-only configuration: the COM backend, its package, and the WINGET_COM
+    compile constant that gates ComBackend.cs and the COM-flag wiring in Program.cs.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.26100.0'">
+    <DefineConstants>$(DefineConstants);WINGET_COM</DefineConstants>
+    <!--
+      The ComInterop targets reject AnyCPU and require an explicit arch when no RID is set
+      (e.g. a plain `dotnet build` of this TFM, or a design-time/IDE restore). Default to x64
+      for those RID-less builds; an actual `-r win-arm64` publish overrides this with its RID.
+    -->
+    <MicrosoftManagementDeployment-Platform Condition="'$(RuntimeIdentifier)' == ''">x64</MicrosoftManagementDeployment-Platform>
+  </PropertyGroup>
+
   <ItemGroup>
     <!--
       Tracks the Terminal.Gui v2 develop pre-release. Bump as upstream publishes new
@@ -28,15 +56,27 @@
     <PackageReference Include="Terminal.Gui" Version="2.4.3-develop.9" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.26100.0'">
+    <!--
+      WinGet COM API projection. Consumed via indexed access only (never foreach over a
+      projected collection) — see spikes/ComBackendSpike/SPIKE-RESULTS.md for why. No
+      CsWinRT optimizer package is needed for the indexing pattern.
+    -->
+    <PackageReference Include="Microsoft.WindowsPackageManager.ComInterop" Version="1.29.190-preview" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Expose internal parser helpers (DedupePackages, ParsePinState, CompareVersionsLike) to the test project. -->
     <InternalsVisibleTo Include="WingetTuiSharp.Tests" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The main project's source globs from the repo root. Exclude the test project so its
-         files don't get pulled into the main exe's compile set. -->
+    <!-- The main project's source globs from the repo root. Exclude the test project and the
+         standalone spikes so their files (and generated obj/ artifacts) don't get pulled into
+         the main exe's compile set. -->
     <Compile Remove="tests/**/*.cs" />
     <None Remove="tests/**/*" />
+    <Compile Remove="spikes/**/*.cs" />
+    <None Remove="spikes/**/*" />
   </ItemGroup>
 </Project>

@@ -90,6 +90,21 @@ public sealed class DetailPanel : FrameView
             AddKv ("License", detail.License);
         }
 
+        if (detail.Tags is { Count: > 0 } tags)
+        {
+            AddKv ("Tags", string.Join (", ", tags));
+        }
+
+        if (detail.ProductCodes is { Count: > 0 } productCodes)
+        {
+            AddKv ("Product code", string.Join (", ", productCodes));
+        }
+
+        if (detail.PackageFamilyNames is { Count: > 0 } familyNames)
+        {
+            AddKv ("Family name", string.Join (", ", familyNames));
+        }
+
         if (detail.PinState.IsPinned)
         {
             AddSingle ($"\U0001F4CC {detail.PinState.DisplayLabel ()}", Theme.Selection);
@@ -104,6 +119,19 @@ public sealed class DetailPanel : FrameView
         if (!string.IsNullOrEmpty (detail.ReleaseNotesUrl))
         {
             AddMarkdownLinkRow ("Release notes", detail.ReleaseNotesUrl);
+        }
+
+        if (!string.IsNullOrEmpty (detail.SupportUrl))
+        {
+            AddMarkdownLinkRow ("Support", detail.SupportUrl);
+        }
+
+        if (detail.Documentation is { Count: > 0 } docs)
+        {
+            foreach (DocLink doc in docs)
+            {
+                AddMarkdownLinkRow (doc.Label, doc.Url);
+            }
         }
 
         if (!string.IsNullOrEmpty (detail.Description))
@@ -141,11 +169,13 @@ public sealed class DetailPanel : FrameView
 
                 AddAction ("x", "Uninstall");
                 AddAction ("p", "Pin/Unpin");
+                AddAction ("V", "Verify install");
 
                 break;
             case AppMode.Upgrades:
                 AddAction ("u", "Upgrade");
                 AddAction ("x", "Uninstall");
+                AddAction ("V", "Verify install");
                 AddAction ("Spc", "Select");
                 AddAction ("a", "Toggle All");
                 AddAction ("U", "Upgrade selected");

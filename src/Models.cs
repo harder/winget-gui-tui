@@ -99,6 +99,13 @@ public sealed class PackageDetail
     public string? License { get; init; }
     public string? ReleaseNotesUrl { get; init; }
 
+    // Richer manifest fields (populated by the COM backend; null elsewhere).
+    public string? SupportUrl { get; init; }
+    public IReadOnlyList<string>? Tags { get; init; }
+    public IReadOnlyList<DocLink>? Documentation { get; init; }
+    public IReadOnlyList<string>? ProductCodes { get; init; }
+    public IReadOnlyList<string>? PackageFamilyNames { get; init; }
+
     /// <summary>
     /// True when <see cref="Description"/> holds a synthesized "couldn't fetch / nothing available"
     /// note rather than real manifest copy. Used by the detail panel to dim/annotate the line so
@@ -169,7 +176,84 @@ public enum OperationKind
     Upgrade,
     Pin,
     Unpin,
-    BatchUpgrade
+    BatchUpgrade,
+    Download
+}
+
+public enum InstallScopePref
+{
+    Default,
+    User,
+    Machine
+}
+
+public enum InstallModePref
+{
+    Default,
+    Silent,
+    Interactive
+}
+
+public enum InstallArchPref
+{
+    Default,
+    X64,
+    X86,
+    Arm64
+}
+
+/// <summary>
+/// User-chosen advanced install options, gathered from the advanced-install panel and passed to
+/// <see cref="IBackend.InstallAsync"/>. The COM backend maps these onto <c>InstallOptions</c>
+/// (scope / mode / AllowedArchitectures / AdditionalInstallerArguments); the CLI backend maps them
+/// onto winget flags; the mock ignores them. A null settings object means "backend defaults".
+/// </summary>
+public sealed class InstallSettings
+{
+    public InstallScopePref Scope { get; init; } = InstallScopePref.Default;
+    public InstallModePref Mode { get; init; } = InstallModePref.Default;
+    public InstallArchPref Architecture { get; init; } = InstallArchPref.Default;
+    public string? CustomArgs { get; init; }
+
+    /// <summary>True when nothing was customized — callers normalize this to null ("backend defaults").</summary>
+    public bool IsDefault
+        => Scope == InstallScopePref.Default
+           && Mode == InstallModePref.Default
+           && Architecture == InstallArchPref.Default
+           && string.IsNullOrWhiteSpace (CustomArgs);
+}
+
+/// <summary>A labelled documentation link from a package manifest (Documentations entry).</summary>
+public sealed record DocLink (string Label, string Url);
+
+public enum VerifyOutcome
+{
+    Ok,            // all checks passed
+    Issues,        // at least one check failed (files/registration missing → corrupt install)
+    NotApplicable, // nothing to check (not installed, or no checks returned)
+    Error          // the check itself failed, or the backend can't verify (CLI)
+}
+
+/// <summary>One installed-status check (e.g. a registry entry or install-location file).</summary>
+public sealed record VerifyCheck (string Label, bool Ok, string? Detail);
+
+/// <summary>
+/// Result of the "verify install" action, backend-agnostic. The COM backend maps
+/// <c>CheckInstalledStatusAsync</c> onto this; the CLI backend returns null (no equivalent).
+/// </summary>
+public sealed class InstallVerification
+{
+    public required VerifyOutcome Outcome { get; init; }
+    public IReadOnlyList<VerifyCheck> Checks { get; init; } = [];
+
+    public string Summary
+        => Outcome switch
+        {
+            VerifyOutcome.Ok => "Installed correctly — all checks passed.",
+            VerifyOutcome.Issues => $"{Checks.Count (c => !c.Ok)} of {Checks.Count} check(s) failed — the install may be corrupt.",
+            VerifyOutcome.NotApplicable => "No installed-status checks were applicable.",
+            _ => "Could not verify the install."
+        };
 }
 
 public sealed class Operation
@@ -185,4 +269,95 @@ public sealed class OpResult
     public required Operation Operation { get; init; }
     public bool Success { get; init; }
     public string Message { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Coarse phase of a long-running install/upgrade/uninstall, backend-agnostic. The COM
+/// backend maps the WinGet <c>InstallProgress</c>/<c>UninstallProgress</c> states onto these;
+/// the mock backend synthesizes them; the CLI backend can't report progress so it reports none.
+/// </summary>
+public enum OpPhase
+{
+    Queued,
+    Downloading,
+    Installing,
+    Uninstalling,
+    Finalizing,
+    Done
+}
+
+/// <summary>
+/// A single progress sample for an in-flight operation. <see cref="Fraction"/> is 0..1 within
+/// the current <see cref="Phase"/> (or overall once installing). Reported via
+/// <see cref="System.IProgress{T}"/> through the backend operation methods.
+/// </summary>
+public readonly record struct OpProgress (OpPhase Phase, double Fraction)
+{
+    /// <summary>Human-readable label for the status bar.</summary>
+    public string Label
+        => Phase switch
+        {
+            OpPhase.Queued => "Queued",
+            OpPhase.Downloading => "Downloading",
+            OpPhase.Installing => "Installing",
+            OpPhase.Uninstalling => "Uninstalling",
+            OpPhase.Finalizing => "Finalizing",
+            OpPhase.Done => "Done",
+            _ => string.Empty
+        };
+}
+
+/// <summary>
+/// What would actually be installed for a package, shown in the install confirm dialog. Sourced
+/// from the WinGet COM API's applicable-installer resolution (type/arch/scope/elevation). Note:
+/// the COM API exposes no installer download size, so size is intentionally absent. Backends that
+/// can't resolve this (CLI) return null; the mock fills representative values.
+/// </summary>
+public sealed class InstallerPreview
+{
+    /// <summary>Friendly installer type, e.g. "MSI", "EXE", "MSIX", "Store".</summary>
+    public string? InstallerType { get; init; }
+
+    /// <summary>Friendly architecture, e.g. "x64", "arm64", "x86".</summary>
+    public string? Architecture { get; init; }
+
+    /// <summary>Install scope: "machine", "user", or null when unknown.</summary>
+    public string? Scope { get; init; }
+
+    /// <summary>True when the installer requires elevation (admin).</summary>
+    public bool RequiresElevation { get; init; }
+
+    /// <summary>The version this installer resolves to, when known.</summary>
+    public string? Version { get; init; }
+
+    /// <summary>One-line summary like <c>MSI · x64 · machine · admin</c> for the confirm dialog.</summary>
+    public string Summary
+    {
+        get
+        {
+            List<string> parts = [];
+
+            if (!string.IsNullOrWhiteSpace (InstallerType))
+            {
+                parts.Add (InstallerType);
+            }
+
+            if (!string.IsNullOrWhiteSpace (Architecture))
+            {
+                parts.Add (Architecture);
+            }
+
+            if (!string.IsNullOrWhiteSpace (Scope))
+            {
+                parts.Add (Scope);
+            }
+
+            if (RequiresElevation)
+            {
+                parts.Add ("admin");
+            }
+
+            return string.Join (" · ", parts);
+        }
+    }
 }
