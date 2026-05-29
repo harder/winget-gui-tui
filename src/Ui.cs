@@ -414,6 +414,80 @@ public sealed class VersionPickerDialog : Runnable<string?>
 }
 
 /// <summary>
+/// Advanced install options panel: install scope, mode, architecture, and custom installer args.
+/// Result is the chosen <see cref="InstallSettings"/>, or null on cancel. The COM backend maps
+/// these onto InstallOptions; the CLI backend onto winget flags. Each OptionSelector's index lines
+/// up with the corresponding enum's member order.
+/// </summary>
+public sealed class AdvancedInstallDialog : Runnable<InstallSettings?>
+{
+    public AdvancedInstallDialog (string packageName)
+    {
+        Title = $" Advanced install: {packageName} ";
+        BorderStyle = LineStyle.Rounded;
+        Width = 66;
+        Height = 15;
+        X = Pos.Center ();
+        Y = Pos.Center ();
+        SchemeName = Theme.SurfaceSchemeName;
+        Arrangement = ViewArrangement.Movable;
+
+        Label scopeLabel = new () { X = 1, Y = 1, Text = "Scope: " };
+        OptionSelector scope = new ()
+        {
+            X = Pos.Right (scopeLabel), Y = 1, Width = Dim.Fill (1),
+            Labels = ["Default", "User", "Machine"]
+        };
+        scope.Value = 0;
+
+        Label modeLabel = new () { X = 1, Y = 3, Text = "Mode:  " };
+        OptionSelector mode = new ()
+        {
+            X = Pos.Right (modeLabel), Y = 3, Width = Dim.Fill (1),
+            Labels = ["Default", "Silent", "Interactive"]
+        };
+        mode.Value = 0;
+
+        Label archLabel = new () { X = 1, Y = 5, Text = "Arch:  " };
+        OptionSelector arch = new ()
+        {
+            X = Pos.Right (archLabel), Y = 5, Width = Dim.Fill (1),
+            Labels = ["Default", "x64", "x86", "arm64"]
+        };
+        arch.Value = 0;
+
+        Label argsLabel = new () { X = 1, Y = 7, Text = "Custom installer args (optional):" };
+        TextField argsField = new () { X = 1, Y = 8, Width = Dim.Fill (1) };
+
+        Button install = new () { X = Pos.Center () - 8, Y = Pos.AnchorEnd (1), Text = "_Install", IsDefault = true };
+        Button cancel = new () { X = Pos.Center () + 2, Y = Pos.AnchorEnd (1), Text = "Cancel" };
+
+        install.Accepting += (_, e) =>
+                             {
+                                 Result = new InstallSettings
+                                 {
+                                     Scope = (InstallScopePref)(scope.Value ?? 0),
+                                     Mode = (InstallModePref)(mode.Value ?? 0),
+                                     Architecture = (InstallArchPref)(arch.Value ?? 0),
+                                     CustomArgs = string.IsNullOrWhiteSpace (argsField.Text) ? null : argsField.Text
+                                 };
+                                 RequestStop ();
+                                 e.Handled = true;
+                             };
+
+        cancel.Accepting += (_, e) =>
+                            {
+                                Result = null;
+                                RequestStop ();
+                                e.Handled = true;
+                            };
+
+        Add (scopeLabel, scope, modeLabel, mode, archLabel, arch, argsLabel, argsField, install, cancel);
+        scope.SetFocus ();
+    }
+}
+
+/// <summary>
 /// Help overlay shown by pressing <c>?</c>. Mirrors the contents from src/ui.rs::render_help.
 /// </summary>
 public sealed class HelpDialog : Runnable
@@ -480,7 +554,9 @@ public sealed class HelpDialog : Runnable
 
         Actions
           i             Install
-          I             Install specific version
+          I             Install specific version (pick from list)
+          A             Advanced install (scope / mode / arch / args)
+          d             Download installer only (no install)
           u             Upgrade
           x             Uninstall
           p             Pin / Unpin
@@ -500,7 +576,7 @@ public sealed class HelpDialog : Runnable
 
         General
           ?             Toggle this help
-          q / Esc       Quit
-          Ctrl+C        Quit
+          Esc           Cancel a running operation, else quit
+          q / Ctrl+C    Quit
         """;
 }

@@ -150,15 +150,41 @@ public sealed class MockBackend : IBackend
         return Task.FromResult<InstallerPreview?> (preview);
     }
 
-    public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    public async Task<OpResult> InstallAsync (string id, string? version, InstallSettings? settings, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         await SimulateProgressAsync (progress, downloads: true, ct);
+
+        string note = settings is null
+                          ? string.Empty
+                          : $" [{settings.Scope}/{settings.Mode}/{settings.Architecture}{(string.IsNullOrWhiteSpace (settings.CustomArgs) ? string.Empty : $"/\"{settings.CustomArgs}\"")}]";
 
         return new ()
         {
             Operation = new () { Kind = OperationKind.Install, PackageId = id, Version = version },
             Success = true,
-            Message = $"[mock] Installed {id}" + (version is null ? string.Empty : $" v{version}")
+            Message = $"[mock] Installed {id}" + (version is null ? string.Empty : $" v{version}") + note
+        };
+    }
+
+    public async Task<OpResult> DownloadAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        // Download-only: a download ramp with no install phase.
+        if (progress is not null)
+        {
+            for (int i = 0; i <= 10; i++)
+            {
+                progress.Report (new (OpPhase.Downloading, i / 10.0));
+                await Task.Delay (55, ct);
+            }
+
+            progress.Report (new (OpPhase.Done, 1.0));
+        }
+
+        return new ()
+        {
+            Operation = new () { Kind = OperationKind.Download, PackageId = id, Version = version },
+            Success = true,
+            Message = $"[mock] Downloaded {id} to (mock path)"
         };
     }
 

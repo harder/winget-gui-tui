@@ -372,7 +372,7 @@ public sealed class ComBackend : IBackend
     // Writes
     // ------------------------------------------------------------------------
 
-    public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    public async Task<OpResult> InstallAsync (string id, string? version, InstallSettings? settings, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         Operation op = new () { Kind = OperationKind.Install, PackageId = id, Version = version };
         CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: false, ct);
@@ -382,11 +382,14 @@ public sealed class ComBackend : IBackend
             return Fail (op, $"Package '{id}' not found in any configured source.");
         }
 
+        // Default to a silent install; advanced settings may override mode/scope/arch/args below.
         InstallOptions options = new ()
         {
             PackageInstallMode = PackageInstallMode.Silent,
             AcceptPackageAgreements = true
         };
+
+        ApplyInstallSettings (options, settings);
 
         if (!string.IsNullOrEmpty (version))
         {
@@ -457,6 +460,107 @@ public sealed class ComBackend : IBackend
         return result.Status == UninstallResultStatus.Ok
                    ? Ok (op, $"Uninstalled {pkg.Name}{(result.RebootRequired ? " (reboot required)" : string.Empty)}")
                    : Fail (op, $"Uninstall failed: {result.Status} (installer 0x{result.UninstallerErrorCode:X}, hr 0x{HResultOf (result.ExtendedErrorCode):X8})");
+    }
+
+    public async Task<OpResult> DownloadAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        Operation op = new () { Kind = OperationKind.Download, PackageId = id, Version = version };
+        CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: false, ct);
+
+        if (pkg is null)
+        {
+            return Fail (op, $"Package '{id}' not found in any configured source.");
+        }
+
+        string dir = DownloadDirectory ();
+
+        DownloadOptions options = new ()
+        {
+            DownloadDirectory = dir,
+            AcceptPackageAgreements = true
+        };
+
+        if (!string.IsNullOrEmpty (version))
+        {
+            PackageVersionId? versionId = FindVersionId (pkg, version);
+
+            if (versionId is null)
+            {
+                return Fail (op, $"Version '{version}' is not available for {pkg.Name}.");
+            }
+
+            options.PackageVersionId = versionId;
+        }
+
+        var asyncOp = _pm.DownloadPackageAsync (pkg, options);
+        asyncOp.Progress = (_, p) => progress?.Report (MapDownload (p));
+        DownloadResult result = await asyncOp.AsTask (ct);
+
+        return result.Status == DownloadResultStatus.Ok
+                   ? Ok (op, $"Downloaded {pkg.Name} to {dir}")
+                   : Fail (op, $"Download failed: {result.Status} (hr 0x{HResultOf (result.ExtendedErrorCode):X8})");
+    }
+
+    /// <summary>Where DownloadPackageAsync drops installers: a stable folder under the user's Downloads.</summary>
+    private static string DownloadDirectory ()
+    {
+        string dir = Path.Combine (
+            Environment.GetFolderPath (Environment.SpecialFolder.UserProfile),
+            "Downloads",
+            "winget-tui");
+
+        try
+        {
+            Directory.CreateDirectory (dir);
+        }
+        catch
+        {
+            // If we can't pre-create it, let the COM server attempt the download anyway.
+        }
+
+        return dir;
+    }
+
+    /// <summary>Map the user's advanced-install choices onto the WinGet InstallOptions.</summary>
+    private static void ApplyInstallSettings (InstallOptions options, InstallSettings? settings)
+    {
+        if (settings is null)
+        {
+            return;
+        }
+
+        options.PackageInstallScope = settings.Scope switch
+        {
+            InstallScopePref.User => PackageInstallScope.User,
+            InstallScopePref.Machine => PackageInstallScope.System,
+            _ => options.PackageInstallScope
+        };
+
+        if (settings.Mode != InstallModePref.Default)
+        {
+            options.PackageInstallMode = settings.Mode == InstallModePref.Interactive
+                                             ? PackageInstallMode.Interactive
+                                             : PackageInstallMode.Silent;
+        }
+
+        Windows.System.ProcessorArchitecture? arch = settings.Architecture switch
+        {
+            InstallArchPref.X64 => Windows.System.ProcessorArchitecture.X64,
+            InstallArchPref.X86 => Windows.System.ProcessorArchitecture.X86,
+            InstallArchPref.Arm64 => Windows.System.ProcessorArchitecture.Arm64,
+            _ => null
+        };
+
+        if (arch is { } a)
+        {
+            // .Add on the projected IVector is a method call (not enumeration) — AOT-safe.
+            options.AllowedArchitectures.Add (a);
+        }
+
+        if (!string.IsNullOrWhiteSpace (settings.CustomArgs))
+        {
+            options.AdditionalInstallerArguments = settings.CustomArgs;
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -726,6 +830,19 @@ public sealed class ComBackend : IBackend
         };
 
         return new (phase, p.UninstallationProgress);
+    }
+
+    private static OpProgress MapDownload (PackageDownloadProgress p)
+    {
+        OpPhase phase = p.State switch
+        {
+            PackageDownloadProgressState.Queued => OpPhase.Queued,
+            PackageDownloadProgressState.Downloading => OpPhase.Downloading,
+            PackageDownloadProgressState.Finished => OpPhase.Done,
+            _ => OpPhase.Downloading
+        };
+
+        return new (phase, p.State == PackageDownloadProgressState.Finished ? 1.0 : p.DownloadProgress);
     }
 
     private static string DescribeInstall (string verb, InstallResult result)

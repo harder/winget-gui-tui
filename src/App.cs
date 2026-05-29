@@ -929,6 +929,16 @@ public sealed class App : Runnable
                     key.Handled = true;
 
                     return;
+                case 'd':
+                    AskDownload (CurrentPackage ());
+                    key.Handled = true;
+
+                    return;
+                case 'A':
+                    AskAdvancedInstall (CurrentPackage ());
+                    key.Handled = true;
+
+                    return;
                 case 'u':
                     AskUpgrade (CurrentPackage ());
                     key.Handled = true;
@@ -1093,7 +1103,7 @@ public sealed class App : Runnable
     /// Fetch the applicable-installer preview, show it in the confirm dialog
     /// (e.g. "Install X? \n MSI · x64 · machine · admin"), then install on confirm.
     /// </summary>
-    private void ConfirmAndInstall (Package p, string? version)
+    private void ConfirmAndInstall (Package p, string? version, InstallSettings? settings = null)
     {
         FetchThen (
             "Checking installer…",
@@ -1101,15 +1111,104 @@ public sealed class App : Runnable
             preview =>
             {
                 string title = version is null ? $"Install {p.Name}?" : $"Install {p.Name} {version}?";
-                string summary = preview?.Summary ?? string.Empty;
-                string body = string.IsNullOrEmpty (summary) ? title : $"{title}\n\n{summary}";
+                List<string> lines = [];
+
+                if (!string.IsNullOrEmpty (preview?.Summary))
+                {
+                    lines.Add (preview!.Summary);
+                }
+
+                string optionsLine = settings is null ? string.Empty : DescribeSettings (settings);
+
+                if (optionsLine.Length > 0)
+                {
+                    lines.Add (optionsLine);
+                }
+
+                string body = lines.Count == 0 ? title : $"{title}\n\n{string.Join ("\n", lines)}";
 
                 if (Confirm ("Install", body))
                 {
                     string activity = version is null ? $"Installing {p.Name}" : $"Installing {p.Name} {version}";
-                    RunOperation (activity, (prog, ct) => _state.Backend.InstallAsync (p.Id, version, prog, ct));
+                    RunOperation (activity, (prog, ct) => _state.Backend.InstallAsync (p.Id, version, settings, prog, ct));
                 }
             });
+    }
+
+    private static string DescribeSettings (InstallSettings s)
+    {
+        List<string> parts = [];
+
+        if (s.Scope != InstallScopePref.Default)
+        {
+            parts.Add (s.Scope == InstallScopePref.Machine ? "machine" : "user");
+        }
+
+        if (s.Mode != InstallModePref.Default)
+        {
+            parts.Add (s.Mode.ToString ().ToLowerInvariant ());
+        }
+
+        if (s.Architecture != InstallArchPref.Default)
+        {
+            parts.Add (s.Architecture.ToString ().ToLowerInvariant ());
+        }
+
+        if (!string.IsNullOrWhiteSpace (s.CustomArgs))
+        {
+            parts.Add ($"custom: {s.CustomArgs}");
+        }
+
+        return parts.Count == 0 ? string.Empty : "Options: " + string.Join (" · ", parts);
+    }
+
+    /// <summary>Fetch the installer to disk without installing, reusing the operation progress bar.</summary>
+    private void AskDownload (Package? p)
+    {
+        if (p is null || App is null || GuardTruncatedId (p, "download"))
+        {
+            return;
+        }
+
+        if (!Confirm ("Download", $"Download the installer for {p.Name} without installing it?"))
+        {
+            return;
+        }
+
+        RunOperation ($"Downloading {p.Name}", (prog, ct) => _state.Backend.DownloadAsync (p.Id, null, prog, ct));
+    }
+
+    /// <summary>Open the advanced-options panel, then install the latest version with those options.</summary>
+    private void AskAdvancedInstall (Package? p)
+    {
+        if (p is null || App is null || GuardTruncatedId (p, "install"))
+        {
+            return;
+        }
+
+        InstallSettings? settings = PromptAdvancedOptions (p);
+
+        if (settings is null)
+        {
+            return;
+        }
+
+        ConfirmAndInstall (p, null, settings);
+    }
+
+    private InstallSettings? PromptAdvancedOptions (Package p)
+    {
+        if (App is null)
+        {
+            return null;
+        }
+
+        AdvancedInstallDialog dlg = new (p.Name);
+        App.Run (dlg);
+        InstallSettings? result = dlg.Result;
+        dlg.Dispose ();
+
+        return result;
     }
 
     /// <summary>

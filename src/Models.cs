@@ -169,7 +169,44 @@ public enum OperationKind
     Upgrade,
     Pin,
     Unpin,
-    BatchUpgrade
+    BatchUpgrade,
+    Download
+}
+
+public enum InstallScopePref
+{
+    Default,
+    User,
+    Machine
+}
+
+public enum InstallModePref
+{
+    Default,
+    Silent,
+    Interactive
+}
+
+public enum InstallArchPref
+{
+    Default,
+    X64,
+    X86,
+    Arm64
+}
+
+/// <summary>
+/// User-chosen advanced install options, gathered from the advanced-install panel and passed to
+/// <see cref="IBackend.InstallAsync"/>. The COM backend maps these onto <c>InstallOptions</c>
+/// (scope / mode / AllowedArchitectures / AdditionalInstallerArguments); the CLI backend maps them
+/// onto winget flags; the mock ignores them. A null settings object means "backend defaults".
+/// </summary>
+public sealed class InstallSettings
+{
+    public InstallScopePref Scope { get; init; } = InstallScopePref.Default;
+    public InstallModePref Mode { get; init; } = InstallModePref.Default;
+    public InstallArchPref Architecture { get; init; } = InstallArchPref.Default;
+    public string? CustomArgs { get; init; }
 }
 
 public sealed class Operation

@@ -60,12 +60,34 @@ public sealed partial class CliBackend : IBackend
 
     // progress is unused: winget.exe only emits an ANSI progress bar to stdout, which we
     // capture as a whole rather than scrape. The COM backend is the one that reports progress.
-    public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    public async Task<OpResult> InstallAsync (string id, string? version, InstallSettings? settings, IProgress<OpProgress>? progress, CancellationToken ct)
     {
-        (int code, string output) = await RunWithCodeAsync (InstallArgs (id, version), ct);
+        (int code, string output) = await RunWithCodeAsync (InstallArgs (id, version, settings), ct);
         Operation op = new () { Kind = OperationKind.Install, PackageId = id, Version = version };
 
         return new () { Operation = op, Success = code == 0, Message = output };
+    }
+
+    public async Task<OpResult> DownloadAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        string dir = Path.Combine (
+            Environment.GetFolderPath (Environment.SpecialFolder.UserProfile),
+            "Downloads",
+            "winget-tui");
+
+        try
+        {
+            Directory.CreateDirectory (dir);
+        }
+        catch
+        {
+            // Let winget attempt the download even if we couldn't pre-create the folder.
+        }
+
+        (int code, string output) = await RunWithCodeAsync (DownloadArgs (id, version, dir), ct);
+        Operation op = new () { Kind = OperationKind.Download, PackageId = id, Version = version };
+
+        return new () { Operation = op, Success = code == 0, Message = code == 0 ? $"Downloaded to {dir}" : output };
     }
 
     public async Task<OpResult> UninstallAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
@@ -156,11 +178,87 @@ public sealed partial class CliBackend : IBackend
     internal static string [] ShowArgs (string id) =>
         ["show", "--id", id, "--exact", "--accept-source-agreements"];
 
-    internal static string [] InstallArgs (string id, string? version)
+    internal static string [] InstallArgs (string id, string? version, InstallSettings? settings = null)
     {
         // Match upstream's argument list: no `--exact`. Some ids need substring match
         // against the catalog (e.g. monikered store packages).
         List<string> args = ["install", "--id", id, "--accept-source-agreements", "--accept-package-agreements"];
+
+        if (!string.IsNullOrEmpty (version))
+        {
+            args.Add ("--version");
+            args.Add (version);
+        }
+
+        AppendInstallSettings (args, settings);
+
+        return [.. args];
+    }
+
+    // Map the advanced-install options onto winget flags. --custom appends to the installer's
+    // default args (matching the COM AdditionalInstallerArguments semantics).
+    private static void AppendInstallSettings (List<string> args, InstallSettings? settings)
+    {
+        if (settings is null)
+        {
+            return;
+        }
+
+        switch (settings.Scope)
+        {
+            case InstallScopePref.User:
+                args.Add ("--scope");
+                args.Add ("user");
+
+                break;
+            case InstallScopePref.Machine:
+                args.Add ("--scope");
+                args.Add ("machine");
+
+                break;
+        }
+
+        switch (settings.Mode)
+        {
+            case InstallModePref.Silent:
+                args.Add ("--silent");
+
+                break;
+            case InstallModePref.Interactive:
+                args.Add ("--interactive");
+
+                break;
+        }
+
+        string? arch = settings.Architecture switch
+        {
+            InstallArchPref.X64 => "x64",
+            InstallArchPref.X86 => "x86",
+            InstallArchPref.Arm64 => "arm64",
+            _ => null
+        };
+
+        if (arch is not null)
+        {
+            args.Add ("--architecture");
+            args.Add (arch);
+        }
+
+        if (!string.IsNullOrWhiteSpace (settings.CustomArgs))
+        {
+            args.Add ("--custom");
+            args.Add (settings.CustomArgs);
+        }
+    }
+
+    internal static string [] DownloadArgs (string id, string? version, string directory)
+    {
+        List<string> args =
+        [
+            "download", "--id", id,
+            "--accept-source-agreements", "--accept-package-agreements",
+            "--download-directory", directory
+        ];
 
         if (!string.IsNullOrEmpty (version))
         {

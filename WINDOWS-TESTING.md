@@ -58,6 +58,19 @@ Operations (pick a small, safe package to install/uninstall, e.g. a CLI tool):
 - [ ] Picking a version → the install confirm shows that version + its installer preview → installs the chosen version.
 - [ ] (CLI backend, `--cli`) `I` falls back to the **free-text** version prompt, since the CLI path returns no version list.
 
+**Download-only** (`d`):
+
+- [ ] `d` on a package downloads its installer **without installing**, showing the progress bar (Downloading phase), and reports the path (default `%USERPROFILE%\Downloads\winget-tui`). Verify the installer file actually lands there.
+- [ ] `Esc` cancels a download in progress (same cooperative-cancel path as install).
+- [ ] (CLI backend) `d` runs `winget download`; on an older winget without that verb, the failure message is shown rather than a crash.
+
+**Advanced install** (`A`):
+
+- [ ] `A` opens the options panel (Scope / Mode / Arch option selectors + custom-args field). Arrow/selection works; Install/Cancel behave.
+- [ ] Choosing **User** vs **Machine** scope, **Silent** vs **Interactive** mode, a specific **arch**, and **custom args** is reflected in the install confirm ("Options: …") and actually applied (e.g. Interactive mode shows the installer UI; user-scope installs to the user profile).
+- [ ] Cancelling the panel aborts with no install.
+- [ ] (CLI backend) the same options map to winget flags (`--scope`, `--silent`/`--interactive`, `--architecture`, `--custom`).
+
 **Live progress bar** (the headline feature — also tests `.Progress` delegate marshaling under AOT, the one CCW-callback unknown):
 
 - [ ] During a real COM **install**, the status bar shows a determinate bar that **advances**, moving through **Downloading → Installing** phases with changing percentages (not stuck at 0%/100%).
