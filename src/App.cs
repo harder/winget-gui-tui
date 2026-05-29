@@ -1291,6 +1291,7 @@ public sealed class App : Runnable
         _state.Loading = true;
         _state.StatusIsError = false;
         RefreshStatusBar ();
+        CancellationToken ct = _detailCts.Token;
 
         Task.Run (async () =>
                   {
@@ -1298,7 +1299,20 @@ public sealed class App : Runnable
 
                       try
                       {
-                          result = await fetch (CancellationToken.None);
+                          result = await fetch (ct);
+                      }
+                      catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                      {
+                          App?.Invoke (() =>
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = string.Empty;
+                                           _state.StatusIsError = false;
+                                           RefreshStatusBar ();
+                                       });
+
+                          return;
                       }
                       catch (Exception ex)
                       {
@@ -1314,8 +1328,33 @@ public sealed class App : Runnable
                           return;
                       }
 
+                      if (ct.IsCancellationRequested)
+                      {
+                          App?.Invoke (() =>
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = string.Empty;
+                                           _state.StatusIsError = false;
+                                           RefreshStatusBar ();
+                                       });
+
+                          return;
+                      }
+
                       App?.Invoke (() =>
                                    {
+                                       if (ct.IsCancellationRequested)
+                                       {
+                                           _preflightBusy = false;
+                                           _state.Loading = false;
+                                           _state.StatusMessage = string.Empty;
+                                           _state.StatusIsError = false;
+                                           RefreshStatusBar ();
+
+                                           return;
+                                       }
+
                                        // Clear the gate before onResult so its (modal) flow — and any
                                        // RunOperation it starts — isn't blocked by this guard.
                                        _preflightBusy = false;
