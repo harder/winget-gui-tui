@@ -1331,7 +1331,11 @@ public sealed class App : Runnable
     /// </summary>
     private void OnOpProgress (OpProgress value)
     {
-        if (!_state.Loading)
+        // Gate on the operation CTS, not _state.Loading: Loading is also toggled by ordinary
+        // list/detail refreshes, so a concurrent refresh could otherwise drop op samples or let
+        // a late report through after the op settled. _opCts is non-null iff an op is in flight
+        // and is cleared before the final refresh.
+        if (_opCts is null)
         {
             return;
         }

@@ -197,6 +197,7 @@ public enum OpPhase
     Queued,
     Downloading,
     Installing,
+    Uninstalling,
     Finalizing,
     Done
 }
@@ -215,6 +216,7 @@ public readonly record struct OpProgress (OpPhase Phase, double Fraction)
             OpPhase.Queued => "Queued",
             OpPhase.Downloading => "Downloading",
             OpPhase.Installing => "Installing",
+            OpPhase.Uninstalling => "Uninstalling",
             OpPhase.Finalizing => "Finalizing",
             OpPhase.Done => "Done",
             _ => string.Empty

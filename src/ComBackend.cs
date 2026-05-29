@@ -24,6 +24,15 @@ namespace WingetTuiSharp;
 /// Pinning has no COM surface (the API exposes no pin/unpin/list-pins), so those three
 /// operations are delegated to an internal <see cref="CliBackend"/> — winget.exe is always
 /// present on a machine where the COM server is registered, so this keeps full feature parity.
+///
+/// Known limitations (from code review, deferred deliberately):
+///  - Composite connect is all-or-nothing: a configured-but-unhealthy source (e.g. a broken
+///    msstore) can fail a SourceFilter.All query even when winget alone is fine. Mitigated by
+///    the in-app source filter ('f') which lets the user narrow to a single working source.
+///  - Operations resolve a package by id alone (FindByIdAsync over SourceFilter.All takes the
+///    first exact match). If the same id existed in multiple catalogs the wrong source could be
+///    chosen. Rare in practice (winget vs msstore ids differ), and matches CliBackend's by-id
+///    behavior; carrying source identity through IBackend would be a separate change.
 /// </summary>
 public sealed class ComBackend : IBackend
 {
@@ -64,16 +73,24 @@ public sealed class ComBackend : IBackend
 
         foreach (MatchResult m in Materialize (result.Matches))
         {
-            CatalogPackage pkg = m.CatalogPackage;
-            string version = SafeVersion (SafeDefaultInstallVersion (pkg)) ?? LatestAvailableVersion (pkg) ?? string.Empty;
-
-            packages.Add (new ()
+            try
             {
-                Id = pkg.Id,
-                Name = pkg.Name,
-                Version = version,
-                Source = SourceOf (pkg)
-            });
+                CatalogPackage pkg = m.CatalogPackage;
+                string version = SafeVersion (SafeDefaultInstallVersion (pkg)) ?? LatestAvailableVersion (pkg) ?? string.Empty;
+
+                packages.Add (new ()
+                {
+                    Id = pkg.Id,
+                    Name = pkg.Name,
+                    Version = version,
+                    Source = SourceOf (pkg)
+                });
+            }
+            catch
+            {
+                // A bad HRESULT on Id/Name surfaces as an exception here; skip the malformed
+                // row rather than failing the entire search.
+            }
         }
 
         return packages;
@@ -104,24 +121,32 @@ public sealed class ComBackend : IBackend
 
         foreach (MatchResult m in Materialize (result.Matches))
         {
-            CatalogPackage pkg = m.CatalogPackage;
-            bool updateAvailable = SafeIsUpdateAvailable (pkg);
-
-            if (upgradesOnly && !updateAvailable)
+            try
             {
-                continue;
+                CatalogPackage pkg = m.CatalogPackage;
+                bool updateAvailable = SafeIsUpdateAvailable (pkg);
+
+                if (upgradesOnly && !updateAvailable)
+                {
+                    continue;
+                }
+
+                string installed = SafeVersion (SafeInstalledVersion (pkg)) ?? string.Empty;
+
+                packages.Add (new ()
+                {
+                    Id = pkg.Id,
+                    Name = pkg.Name,
+                    Version = installed,
+                    Source = SourceOf (pkg),
+                    AvailableVersion = updateAvailable ? LatestAvailableVersion (pkg) : null
+                });
             }
-
-            string installed = SafeVersion (SafeInstalledVersion (pkg)) ?? string.Empty;
-
-            packages.Add (new ()
+            catch
             {
-                Id = pkg.Id,
-                Name = pkg.Name,
-                Version = installed,
-                Source = SourceOf (pkg),
-                AvailableVersion = updateAvailable ? LatestAvailableVersion (pkg) : null
-            });
+                // Skip a malformed row (bad HRESULT on a property read) rather than failing
+                // the entire listing.
+            }
         }
 
         return packages;
@@ -515,7 +540,7 @@ public sealed class ComBackend : IBackend
         OpPhase phase = p.State switch
         {
             PackageUninstallProgressState.Queued => OpPhase.Queued,
-            PackageUninstallProgressState.Uninstalling => OpPhase.Installing,
+            PackageUninstallProgressState.Uninstalling => OpPhase.Uninstalling,
             PackageUninstallProgressState.PostUninstall => OpPhase.Finalizing,
             PackageUninstallProgressState.Finished => OpPhase.Done,
             _ => OpPhase.Installing
