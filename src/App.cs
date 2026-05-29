@@ -1493,6 +1493,11 @@ public sealed class App : Runnable
 
                           App?.Invoke (() =>
                                        {
+                                           if (result.Success)
+                                           {
+                                               _state.DetailCache.Remove (id);
+                                           }
+
                                            _state.StatusMessage = result.Success
                                                                       ? $"Upgraded {id}"
                                                                       : $"Failed: {id}";
