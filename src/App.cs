@@ -939,6 +939,11 @@ public sealed class App : Runnable
                     key.Handled = true;
 
                     return;
+                case 'V':
+                    AskVerify (CurrentPackage ());
+                    key.Handled = true;
+
+                    return;
                 case 'u':
                     AskUpgrade (CurrentPackage ());
                     key.Handled = true;
@@ -1196,6 +1201,60 @@ public sealed class App : Runnable
         // All-default selection means "backend defaults" — normalize to null so it behaves
         // identically to a plain install on every backend (no per-backend "Default" ambiguity).
         ConfirmAndInstall (p, null, settings.IsDefault ? null : settings);
+    }
+
+    /// <summary>Run CheckInstalledStatus on a package and report whether its install is intact.</summary>
+    private void AskVerify (Package? p)
+    {
+        if (p is null || App is null || GuardTruncatedId (p, "verify"))
+        {
+            return;
+        }
+
+        FetchThen (
+            $"Verifying {p.Name}…",
+            ct => _state.Backend.VerifyInstalledAsync (p.Id, ct),
+            verification =>
+            {
+                if (verification is null)
+                {
+                    _state.StatusMessage = "Verify is only available on the COM backend.";
+                    _state.StatusIsError = false;
+                    RefreshStatusBar ();
+
+                    return;
+                }
+
+                ShowVerifyResult (p, verification);
+            });
+    }
+
+    private void ShowVerifyResult (Package p, InstallVerification v)
+    {
+        if (App is null)
+        {
+            return;
+        }
+
+        StringBuilder sb = new ();
+        sb.AppendLine (v.Summary);
+
+        int shown = 0;
+
+        foreach (VerifyCheck c in v.Checks)
+        {
+            if (shown++ >= 12)
+            {
+                sb.AppendLine ("…");
+
+                break;
+            }
+
+            string detail = string.IsNullOrEmpty (c.Detail) ? string.Empty : $" — {c.Detail}";
+            sb.AppendLine ($"{(c.Ok ? "✓" : "✗")} {c.Label}{detail}");
+        }
+
+        MessageBox.Query (App, $"Verify: {p.Name}", sb.ToString ().TrimEnd (), "_OK");
     }
 
     private InstallSettings? PromptAdvancedOptions (Package p)

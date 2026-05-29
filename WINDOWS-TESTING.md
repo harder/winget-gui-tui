@@ -71,6 +71,17 @@ Operations (pick a small, safe package to install/uninstall, e.g. a CLI tool):
 - [ ] Cancelling the panel aborts with no install.
 - [ ] (CLI backend) the same options map to winget flags (`--scope`, `--silent`/`--interactive`, `--architecture`, `--custom`).
 
+**Verify install** (`V` — COM-only):
+
+- [ ] `V` on an installed package runs `CheckInstalledStatus` and shows a result dialog: "Installed correctly" with ✓ checks (registry entry / install location / files), or a list of ✗ failures if the install is corrupt.
+- [ ] Deliberately break an install (e.g. delete a file from the install dir) and confirm `V` reports the **Issues** outcome with the failing check.
+- [ ] (CLI backend, `--cli`) `V` reports "Verify is only available on the COM backend" rather than erroring.
+
+**Richer detail panel** (COM):
+
+- [ ] The detail panel for a package shows the extra manifest fields when present: **Tags**, **Product code**, **Family name**, a clickable **Support** link, and **Documentation** links — in addition to the existing fields. Verify the links open.
+- [ ] Packages without these fields don't render empty rows (the lines are omitted when absent).
+
 **Live progress bar** (the headline feature — also tests `.Progress` delegate marshaling under AOT, the one CCW-callback unknown):
 
 - [ ] During a real COM **install**, the status bar shows a determinate bar that **advances**, moving through **Downloading → Installing** phases with changing percentages (not stuck at 0%/100%).

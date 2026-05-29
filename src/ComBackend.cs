@@ -202,7 +202,12 @@ public sealed class ComBackend : IBackend
                 Description = description,
                 Homepage = NullIfEmpty (meta?.PackageUrl),
                 License = NullIfEmpty (meta?.License),
-                ReleaseNotesUrl = NullIfEmpty (meta?.ReleaseNotesUrl)
+                ReleaseNotesUrl = NullIfEmpty (meta?.ReleaseNotesUrl),
+                SupportUrl = NullIfEmpty (meta?.PublisherSupportUrl),
+                Tags = meta is null ? null : StringVector (() => meta.Tags),
+                Documentation = DocLinks (meta),
+                ProductCodes = StringVector (() => versionInfo.ProductCodes),
+                PackageFamilyNames = StringVector (() => versionInfo.PackageFamilyNames)
             };
         }
         catch
@@ -508,6 +513,148 @@ public sealed class ComBackend : IBackend
         return result.Status == DownloadResultStatus.Ok
                    ? Ok (op, $"Downloaded {pkg.Name} to {dir}")
                    : Fail (op, $"Download failed: {result.Status} (hr 0x{HResultOf (result.ExtendedErrorCode):X8})");
+    }
+
+    public async Task<InstallVerification?> VerifyInstalledAsync (string id, CancellationToken ct)
+    {
+        CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: true, ct);
+
+        if (pkg is null)
+        {
+            return null;
+        }
+
+        CheckInstalledStatusResult result;
+
+        try
+        {
+            result = await pkg.CheckInstalledStatusAsync (InstalledStatusType.AllChecks).AsTask (ct);
+        }
+        catch
+        {
+            return new () { Outcome = VerifyOutcome.Error };
+        }
+
+        if (result.Status != CheckInstalledStatusResultStatus.Ok)
+        {
+            return new () { Outcome = VerifyOutcome.Error };
+        }
+
+        List<VerifyCheck> checks = [];
+        bool anyFailed = false;
+
+        // Two nested projected vectors — indexed via Materialize (AOT rule).
+        foreach (PackageInstallerInstalledStatus installer in Materialize (result.PackageInstalledStatus))
+        {
+            IReadOnlyList<InstalledStatus> entries;
+
+            try
+            {
+                entries = Materialize (installer.InstallerInstalledStatus);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (InstalledStatus entry in entries)
+            {
+                try
+                {
+                    // HRESULT projects to an Exception: null means S_OK (the check passed).
+                    bool ok = entry.Status is null;
+                    string? path = NullIfEmpty (entry.Path);
+                    checks.Add (new (StatusTypeName (entry.Type), ok, ok ? path : Coalesce (path, $"hr 0x{HResultOf (entry.Status):X8}")));
+
+                    if (!ok)
+                    {
+                        anyFailed = true;
+                    }
+                }
+                catch
+                {
+                    // Skip a malformed status entry.
+                }
+            }
+        }
+
+        VerifyOutcome outcome = checks.Count == 0
+                                    ? VerifyOutcome.NotApplicable
+                                    : anyFailed
+                                        ? VerifyOutcome.Issues
+                                        : VerifyOutcome.Ok;
+
+        return new () { Outcome = outcome, Checks = checks };
+    }
+
+    private static string StatusTypeName (InstalledStatusType t)
+        => t switch
+        {
+            InstalledStatusType.AppsAndFeaturesEntry => "Registry entry",
+            InstalledStatusType.AppsAndFeaturesEntryInstallLocation => "Install location",
+            InstalledStatusType.AppsAndFeaturesEntryInstallLocationFile => "Install-location file",
+            InstalledStatusType.DefaultInstallLocation => "Default install location",
+            InstalledStatusType.DefaultInstallLocationFile => "Default-location file",
+            _ => t.ToString ()
+        };
+
+    /// <summary>Read a projected string vector into a managed list (indexed, guarded), or null if empty/unreadable.</summary>
+    private static IReadOnlyList<string>? StringVector (Func<IReadOnlyList<string>?> get)
+    {
+        try
+        {
+            IReadOnlyList<string>? projected = get ();
+
+            if (projected is null)
+            {
+                return null;
+            }
+
+            List<string> list = [];
+
+            foreach (string s in Materialize (projected))
+            {
+                if (!string.IsNullOrWhiteSpace (s))
+                {
+                    list.Add (s);
+                }
+            }
+
+            return list.Count > 0 ? list : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<DocLink>? DocLinks (CatalogPackageMetadata? meta)
+    {
+        if (meta is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            List<DocLink> links = [];
+
+            foreach (Documentation d in Materialize (meta.Documentations))
+            {
+                string url = d.DocumentUrl;
+
+                if (!string.IsNullOrWhiteSpace (url))
+                {
+                    links.Add (new (string.IsNullOrWhiteSpace (d.DocumentLabel) ? "Documentation" : d.DocumentLabel, url));
+                }
+            }
+
+            return links.Count > 0 ? links : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Where DownloadPackageAsync drops installers: a stable folder under the user's Downloads.</summary>

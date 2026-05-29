@@ -99,6 +99,13 @@ public sealed class PackageDetail
     public string? License { get; init; }
     public string? ReleaseNotesUrl { get; init; }
 
+    // Richer manifest fields (populated by the COM backend; null elsewhere).
+    public string? SupportUrl { get; init; }
+    public IReadOnlyList<string>? Tags { get; init; }
+    public IReadOnlyList<DocLink>? Documentation { get; init; }
+    public IReadOnlyList<string>? ProductCodes { get; init; }
+    public IReadOnlyList<string>? PackageFamilyNames { get; init; }
+
     /// <summary>
     /// True when <see cref="Description"/> holds a synthesized "couldn't fetch / nothing available"
     /// note rather than real manifest copy. Used by the detail panel to dim/annotate the line so
@@ -214,6 +221,39 @@ public sealed class InstallSettings
            && Mode == InstallModePref.Default
            && Architecture == InstallArchPref.Default
            && string.IsNullOrWhiteSpace (CustomArgs);
+}
+
+/// <summary>A labelled documentation link from a package manifest (Documentations entry).</summary>
+public sealed record DocLink (string Label, string Url);
+
+public enum VerifyOutcome
+{
+    Ok,            // all checks passed
+    Issues,        // at least one check failed (files/registration missing → corrupt install)
+    NotApplicable, // nothing to check (not installed, or no checks returned)
+    Error          // the check itself failed, or the backend can't verify (CLI)
+}
+
+/// <summary>One installed-status check (e.g. a registry entry or install-location file).</summary>
+public sealed record VerifyCheck (string Label, bool Ok, string? Detail);
+
+/// <summary>
+/// Result of the "verify install" action, backend-agnostic. The COM backend maps
+/// <c>CheckInstalledStatusAsync</c> onto this; the CLI backend returns null (no equivalent).
+/// </summary>
+public sealed class InstallVerification
+{
+    public required VerifyOutcome Outcome { get; init; }
+    public IReadOnlyList<VerifyCheck> Checks { get; init; } = [];
+
+    public string Summary
+        => Outcome switch
+        {
+            VerifyOutcome.Ok => "Installed correctly — all checks passed.",
+            VerifyOutcome.Issues => $"{Checks.Count (c => !c.Ok)} of {Checks.Count} check(s) failed — the install may be corrupt.",
+            VerifyOutcome.NotApplicable => "No installed-status checks were applicable.",
+            _ => "Could not verify the install."
+        };
 }
 
 public sealed class Operation

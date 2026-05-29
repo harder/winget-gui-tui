@@ -559,6 +559,7 @@ public sealed class HelpDialog : Runnable
           d             Download installer only (no install)
           u             Upgrade
           x             Uninstall
+          V             Verify install (check files / registration)
           p             Pin / Unpin
           Space         Toggle batch select (Upgrades only)
           a             Select / deselect all (Upgrades only)

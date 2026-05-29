@@ -28,6 +28,10 @@ public interface IBackend
     // Fetch a package's installer to disk without installing it (winget "download"), reusing the
     // same progress reporting as install. Returns the download location in the OpResult message.
     Task<OpResult> DownloadAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct);
+
+    // Check whether an installed package's files/registration are intact (COM
+    // CheckInstalledStatus). Returns null when the backend has no equivalent (CLI).
+    Task<InstallVerification?> VerifyInstalledAsync (string id, CancellationToken ct);
     Task<OpResult> PinAsync (string id, CancellationToken ct);
     Task<OpResult> UnpinAsync (string id, CancellationToken ct);
     Task<IReadOnlyDictionary<string, PinState>> ListPinsAsync (CancellationToken ct);

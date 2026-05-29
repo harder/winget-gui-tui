@@ -58,6 +58,10 @@ public sealed partial class CliBackend : IBackend
     public Task<InstallerPreview?> GetInstallerPreviewAsync (string id, string? version, CancellationToken ct)
         => Task.FromResult<InstallerPreview?> (null);
 
+    // No CLI equivalent to CheckInstalledStatus — null signals "verify unavailable on this backend".
+    public Task<InstallVerification?> VerifyInstalledAsync (string id, CancellationToken ct)
+        => Task.FromResult<InstallVerification?> (null);
+
     // progress is unused: winget.exe only emits an ANSI progress bar to stdout, which we
     // capture as a whole rather than scrape. The COM backend is the one that reports progress.
     public async Task<OpResult> InstallAsync (string id, string? version, InstallSettings? settings, IProgress<OpProgress>? progress, CancellationToken ct)
