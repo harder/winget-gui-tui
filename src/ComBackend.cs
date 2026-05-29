@@ -521,7 +521,9 @@ public sealed class ComBackend : IBackend
 
         if (pkg is null)
         {
-            return null;
+            // Not "can't verify" (null is reserved for the CLI backend) — the package just
+            // isn't found / installed, so there's nothing to check.
+            return new () { Outcome = VerifyOutcome.NotApplicable };
         }
 
         CheckInstalledStatusResult result;
@@ -535,56 +537,71 @@ public sealed class ComBackend : IBackend
             return new () { Outcome = VerifyOutcome.Error };
         }
 
-        if (result.Status != CheckInstalledStatusResultStatus.Ok)
+        try
         {
-            return new () { Outcome = VerifyOutcome.Error };
-        }
-
-        List<VerifyCheck> checks = [];
-        bool anyFailed = false;
-
-        // Two nested projected vectors — indexed via Materialize (AOT rule).
-        foreach (PackageInstallerInstalledStatus installer in Materialize (result.PackageInstalledStatus))
-        {
-            IReadOnlyList<InstalledStatus> entries;
-
-            try
+            if (result.Status != CheckInstalledStatusResultStatus.Ok)
             {
-                entries = Materialize (installer.InstallerInstalledStatus);
-            }
-            catch
-            {
-                continue;
+                return new () { Outcome = VerifyOutcome.Error };
             }
 
-            foreach (InstalledStatus entry in entries)
+            List<VerifyCheck> checks = [];
+            bool anyFailed = false;
+            bool hadReadError = false;
+
+            // Two nested projected vectors — indexed via Materialize (AOT rule).
+            foreach (PackageInstallerInstalledStatus installer in Materialize (result.PackageInstalledStatus))
             {
+                IReadOnlyList<InstalledStatus> entries;
+
                 try
                 {
-                    // HRESULT projects to an Exception: null means S_OK (the check passed).
-                    bool ok = entry.Status is null;
-                    string? path = NullIfEmpty (entry.Path);
-                    checks.Add (new (StatusTypeName (entry.Type), ok, ok ? path : Coalesce (path, $"hr 0x{HResultOf (entry.Status):X8}")));
-
-                    if (!ok)
-                    {
-                        anyFailed = true;
-                    }
+                    entries = Materialize (installer.InstallerInstalledStatus);
                 }
                 catch
                 {
-                    // Skip a malformed status entry.
+                    hadReadError = true;
+
+                    continue;
+                }
+
+                foreach (InstalledStatus entry in entries)
+                {
+                    try
+                    {
+                        // HRESULT projects to an Exception: null means S_OK (the check passed).
+                        bool ok = entry.Status is null;
+                        string? path = NullIfEmpty (entry.Path);
+                        checks.Add (new (StatusTypeName (entry.Type), ok, ok ? path : Coalesce (path, $"hr 0x{HResultOf (entry.Status):X8}")));
+
+                        if (!ok)
+                        {
+                            anyFailed = true;
+                        }
+                    }
+                    catch
+                    {
+                        hadReadError = true;
+                    }
                 }
             }
-        }
 
-        VerifyOutcome outcome = checks.Count == 0
-                                    ? VerifyOutcome.NotApplicable
-                                    : anyFailed
+            // A confirmed failed check → Issues. Otherwise, if any read errored we can't honestly
+            // claim the install is clean, so report Error rather than Ok/NotApplicable.
+            VerifyOutcome outcome = anyFailed
                                         ? VerifyOutcome.Issues
-                                        : VerifyOutcome.Ok;
+                                        : hadReadError
+                                            ? VerifyOutcome.Error
+                                            : checks.Count == 0
+                                                ? VerifyOutcome.NotApplicable
+                                                : VerifyOutcome.Ok;
 
-        return new () { Outcome = outcome, Checks = checks };
+            return new () { Outcome = outcome, Checks = checks };
+        }
+        catch
+        {
+            // result.Status / PackageInstalledStatus materialization threw.
+            return new () { Outcome = VerifyOutcome.Error };
+        }
     }
 
     private static string StatusTypeName (InstalledStatusType t)
@@ -641,11 +658,18 @@ public sealed class ComBackend : IBackend
 
             foreach (Documentation d in Materialize (meta.Documentations))
             {
-                string url = d.DocumentUrl;
-
-                if (!string.IsNullOrWhiteSpace (url))
+                try
                 {
-                    links.Add (new (string.IsNullOrWhiteSpace (d.DocumentLabel) ? "Documentation" : d.DocumentLabel, url));
+                    string url = d.DocumentUrl;
+
+                    if (!string.IsNullOrWhiteSpace (url))
+                    {
+                        links.Add (new (string.IsNullOrWhiteSpace (d.DocumentLabel) ? "Documentation" : d.DocumentLabel, url));
+                    }
+                }
+                catch
+                {
+                    // Skip a malformed documentation entry rather than dropping the whole list.
                 }
             }
 
