@@ -65,12 +65,14 @@ if (args.Length > 0 && args [0] is "--dump")
     return;
 }
 
-// Backend selection (in priority order):
-//   --mock / -m   force the in-memory mock (cross-platform dev/parity)
-//   --cli         force the winget.exe CLI parser
-//   --com         force the WinGet COM API backend (Windows builds only)
-//   (default)     COM on Windows builds, CLI elsewhere; either falls back to mock
-//                 if winget isn't usable.
+// Backend selection (precedence: --mock > --cli > --com > default):
+//   --mock / -m   the in-memory mock (cross-platform dev/parity)
+//   --cli         the winget.exe CLI parser
+//   --com         the WinGet COM API backend (Windows builds only)
+//   (default)     COM on Windows builds, CLI elsewhere
+// These are preferences, not hard guarantees: a requested backend that can't run degrades
+// (with a stderr note) — --com on a non-Windows build → CLI, and any CLI path with no winget
+// on PATH → mock. Scripts that need a guaranteed backend should check that note.
 IBackend backend = SelectBackend (args);
 
 Theme.Register ();
@@ -95,8 +97,10 @@ static IBackend SelectBackend (string [] args)
     }
 
 #if WINGET_COM
-    // On the Windows build, COM is the default unless the user explicitly asked for the CLI.
-    if (wantCom || (!wantCli && OperatingSystem.IsWindows ()))
+    // Precedence: an explicit --cli always wins over --com (and over the Windows COM default).
+    // So COM is chosen only when --cli was NOT passed and either --com was, or we're the
+    // default on Windows.
+    if (!wantCli && (wantCom || OperatingSystem.IsWindows ()))
     {
         try
         {

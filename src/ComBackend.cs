@@ -33,6 +33,13 @@ namespace WingetTuiSharp;
 ///    first exact match). If the same id existed in multiple catalogs the wrong source could be
 ///    chosen. Rare in practice (winget vs msstore ids differ), and matches CliBackend's by-id
 ///    behavior; carrying source identity through IBackend would be a separate change.
+///  - A single PackageManager is shared across operations that the UI invokes from background
+///    (threadpool/MTA) threads. WinGet's COM objects are expected to be agile, but that hasn't
+///    been verified under this app's usage; if RPC_E_WRONG_THREAD or intermittent COM errors
+///    surface on Windows, switch to a fresh PackageManager per operation.
+///  - Pinning delegates to winget.exe, so pin/unpin/list-pins need winget on PATH even on this
+///    backend. If the COM server is registered but winget.exe isn't reachable, pin operations
+///    fail (visibly, via the returned OpResult) while everything else keeps working.
 /// </summary>
 public sealed class ComBackend : IBackend
 {
@@ -182,19 +189,29 @@ public sealed class ComBackend : IBackend
 
         string? description = Coalesce (meta?.Description, meta?.ShortDescription);
 
-        return new ()
+        try
         {
-            Id = pkg.Id,
-            Name = Coalesce (meta?.PackageName, pkg.Name) ?? pkg.Id,
-            Version = SafeVersion (SafeInstalledVersion (pkg)) ?? SafeVersion (versionInfo) ?? string.Empty,
-            AvailableVersion = LatestAvailableVersion (pkg),
-            Source = SourceOf (pkg),
-            Publisher = NullIfEmpty (meta?.Publisher),
-            Description = description,
-            Homepage = NullIfEmpty (meta?.PackageUrl),
-            License = NullIfEmpty (meta?.License),
-            ReleaseNotesUrl = NullIfEmpty (meta?.ReleaseNotesUrl)
-        };
+            return new ()
+            {
+                Id = pkg.Id,
+                Name = Coalesce (meta?.PackageName, pkg.Name) ?? pkg.Id,
+                Version = SafeVersion (SafeInstalledVersion (pkg)) ?? SafeVersion (versionInfo) ?? string.Empty,
+                AvailableVersion = LatestAvailableVersion (pkg),
+                Source = SourceOf (pkg),
+                Publisher = NullIfEmpty (meta?.Publisher),
+                Description = description,
+                Homepage = NullIfEmpty (meta?.PackageUrl),
+                License = NullIfEmpty (meta?.License),
+                ReleaseNotesUrl = NullIfEmpty (meta?.ReleaseNotesUrl)
+            };
+        }
+        catch
+        {
+            // Core id/name getters threw (bad HRESULT). Return null so the app falls back to its
+            // stub detail rather than surfacing a "Detail error", matching the list path's
+            // skip-the-bad-row behavior.
+            return null;
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -237,7 +254,7 @@ public sealed class ComBackend : IBackend
 
         return result.Status == InstallResultStatus.Ok
                    ? Ok (op, $"Installed {pkg.Name}{(result.RebootRequired ? " (reboot required)" : string.Empty)}")
-                   : Fail (op, DescribeInstall (result));
+                   : Fail (op, DescribeInstall ("Install", result));
     }
 
     public async Task<OpResult> UpgradeAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
@@ -265,7 +282,7 @@ public sealed class ComBackend : IBackend
 
         return result.Status == InstallResultStatus.Ok
                    ? Ok (op, $"Upgraded {pkg.Name}{(result.RebootRequired ? " (reboot required)" : string.Empty)}")
-                   : Fail (op, DescribeInstall (result));
+                   : Fail (op, DescribeInstall ("Upgrade", result));
     }
 
     public async Task<OpResult> UninstallAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
@@ -385,12 +402,20 @@ public sealed class ComBackend : IBackend
 
     private static PackageVersionId? FindVersionId (CatalogPackage pkg, string version)
     {
-        foreach (PackageVersionId vid in Materialize (pkg.AvailableVersions))
+        try
         {
-            if (string.Equals (vid.Version, version, StringComparison.OrdinalIgnoreCase))
+            foreach (PackageVersionId vid in Materialize (pkg.AvailableVersions))
             {
-                return vid;
+                if (string.Equals (vid.Version, version, StringComparison.OrdinalIgnoreCase))
+                {
+                    return vid;
+                }
             }
+        }
+        catch
+        {
+            // Version list unreadable (bad HRESULT) — treat as "version not found" so the caller
+            // returns a clean OpResult instead of throwing.
         }
 
         return null;
@@ -543,14 +568,14 @@ public sealed class ComBackend : IBackend
             PackageUninstallProgressState.Uninstalling => OpPhase.Uninstalling,
             PackageUninstallProgressState.PostUninstall => OpPhase.Finalizing,
             PackageUninstallProgressState.Finished => OpPhase.Done,
-            _ => OpPhase.Installing
+            _ => OpPhase.Uninstalling
         };
 
         return new (phase, p.UninstallationProgress);
     }
 
-    private static string DescribeInstall (InstallResult result)
-        => $"Install failed: {result.Status} (installer {result.InstallerErrorCode}, hr 0x{HResultOf (result.ExtendedErrorCode):X8})";
+    private static string DescribeInstall (string verb, InstallResult result)
+        => $"{verb} failed: {result.Status} (installer {result.InstallerErrorCode}, hr 0x{HResultOf (result.ExtendedErrorCode):X8})";
 
     // In this projection, the IDL's `HRESULT ExtendedErrorCode` surfaces as a System.Exception
     // (CsWinRT maps a failed HRESULT to its exception). Pull the numeric HRESULT back out.
