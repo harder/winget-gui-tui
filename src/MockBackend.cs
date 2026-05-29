@@ -119,29 +119,71 @@ public sealed class MockBackend : IBackend
         return Task.FromResult<PackageDetail?> (detail);
     }
 
-    public Task<OpResult> InstallAsync (string id, string? version, CancellationToken ct)
-        => Task.FromResult (new OpResult
+    public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        await SimulateProgressAsync (progress, downloads: true, ct);
+
+        return new ()
         {
             Operation = new () { Kind = OperationKind.Install, PackageId = id, Version = version },
             Success = true,
             Message = $"[mock] Installed {id}" + (version is null ? string.Empty : $" v{version}")
-        });
+        };
+    }
 
-    public Task<OpResult> UninstallAsync (string id, CancellationToken ct)
-        => Task.FromResult (new OpResult
+    public async Task<OpResult> UninstallAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        await SimulateProgressAsync (progress, downloads: false, ct);
+
+        return new ()
         {
             Operation = new () { Kind = OperationKind.Uninstall, PackageId = id },
             Success = true,
             Message = $"[mock] Uninstalled {id}"
-        });
+        };
+    }
 
-    public Task<OpResult> UpgradeAsync (string id, CancellationToken ct)
-        => Task.FromResult (new OpResult
+    public async Task<OpResult> UpgradeAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
+    {
+        await SimulateProgressAsync (progress, downloads: true, ct);
+
+        return new ()
         {
             Operation = new () { Kind = OperationKind.Upgrade, PackageId = id },
             Success = true,
             Message = $"[mock] Upgraded {id}"
-        });
+        };
+    }
+
+    /// <summary>
+    /// Synthesize a believable progress ramp so the status-bar progress UI can be exercised on
+    /// any host (the mock has no real work to do). Downloads ramp 0→1 then install ramps 0→1;
+    /// uninstall skips the download phase.
+    /// </summary>
+    private static async Task SimulateProgressAsync (IProgress<OpProgress>? progress, bool downloads, CancellationToken ct)
+    {
+        if (progress is null)
+        {
+            return;
+        }
+
+        if (downloads)
+        {
+            for (int i = 0; i <= 10; i++)
+            {
+                progress.Report (new (OpPhase.Downloading, i / 10.0));
+                await Task.Delay (55, ct);
+            }
+        }
+
+        for (int i = 0; i <= 10; i++)
+        {
+            progress.Report (new (OpPhase.Installing, i / 10.0));
+            await Task.Delay (45, ct);
+        }
+
+        progress.Report (new (OpPhase.Done, 1.0));
+    }
 
     public Task<OpResult> PinAsync (string id, CancellationToken ct)
     {

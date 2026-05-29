@@ -32,6 +32,9 @@ public sealed class AppState
     public string StatusMessage { get; set; } = string.Empty;
     public bool StatusIsError { get; set; }
 
+    /// <summary>Progress of the in-flight install/upgrade/uninstall, or null when none is running.</summary>
+    public OpProgress? OpProgress { get; set; }
+
     public int ViewGeneration { get; private set; }
     public int DetailGeneration { get; private set; }
 

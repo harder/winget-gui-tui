@@ -48,7 +48,9 @@ public sealed partial class CliBackend : IBackend
         return ParseShow (id, output);
     }
 
-    public async Task<OpResult> InstallAsync (string id, string? version, CancellationToken ct)
+    // progress is unused: winget.exe only emits an ANSI progress bar to stdout, which we
+    // capture as a whole rather than scrape. The COM backend is the one that reports progress.
+    public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         (int code, string output) = await RunWithCodeAsync (InstallArgs (id, version), ct);
         Operation op = new () { Kind = OperationKind.Install, PackageId = id, Version = version };
@@ -56,7 +58,7 @@ public sealed partial class CliBackend : IBackend
         return new () { Operation = op, Success = code == 0, Message = output };
     }
 
-    public async Task<OpResult> UninstallAsync (string id, CancellationToken ct)
+    public async Task<OpResult> UninstallAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         (int code, string output) = await RunWithCodeAsync (UninstallArgs (id), ct);
         Operation op = new () { Kind = OperationKind.Uninstall, PackageId = id };
@@ -64,7 +66,7 @@ public sealed partial class CliBackend : IBackend
         return new () { Operation = op, Success = code == 0, Message = output };
     }
 
-    public async Task<OpResult> UpgradeAsync (string id, CancellationToken ct)
+    public async Task<OpResult> UpgradeAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         // Upstream tries id (non-exact) first, then falls back to name (exact). Match that.
         (int code, string output) = await RunWithCodeAsync (UpgradeByIdArgs (id), ct);

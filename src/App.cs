@@ -506,6 +506,7 @@ public sealed class App : Runnable
         _statusBar.Message = _state.StatusMessage;
         _statusBar.IsError = _state.StatusIsError;
         _statusBar.IsLoading = _state.Loading || _state.DetailLoading;
+        _statusBar.Op = _state.OpProgress;
         _statusBar.SetNeedsDraw ();
         _detailPanel.Mode = _state.Mode;
     }
@@ -1038,7 +1039,7 @@ public sealed class App : Runnable
                 return;
             }
 
-            RunOperation ($"Installing {p.Name}", _ => _state.Backend.InstallAsync (p.Id, null, _));
+            RunOperation ($"Installing {p.Name}", (prog, ct) => _state.Backend.InstallAsync (p.Id, null, prog, ct));
 
             return;
         }
@@ -1050,7 +1051,7 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"Installing {p.Name} {version}", _ => _state.Backend.InstallAsync (p.Id, version, _));
+        RunOperation ($"Installing {p.Name} {version}", (prog, ct) => _state.Backend.InstallAsync (p.Id, version, prog, ct));
     }
 
     private void AskUpgrade (Package? p)
@@ -1065,7 +1066,7 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"Upgrading {p.Name}", _ => _state.Backend.UpgradeAsync (p.Id, _));
+        RunOperation ($"Upgrading {p.Name}", (prog, ct) => _state.Backend.UpgradeAsync (p.Id, prog, ct));
     }
 
     private void AskUninstall (Package? p)
@@ -1080,7 +1081,7 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"Uninstalling {p.Name}", _ => _state.Backend.UninstallAsync (p.Id, _));
+        RunOperation ($"Uninstalling {p.Name}", (prog, ct) => _state.Backend.UninstallAsync (p.Id, prog, ct));
     }
 
     private void TogglePin (Package? p)
@@ -1098,9 +1099,9 @@ public sealed class App : Runnable
             return;
         }
 
-        RunOperation ($"{label}ning {p.Name}", _ => pinned
-                                                        ? _state.Backend.UnpinAsync (p.Id, _)
-                                                        : _state.Backend.PinAsync (p.Id, _));
+        RunOperation ($"{label}ning {p.Name}", (_, ct) => pinned
+                                                              ? _state.Backend.UnpinAsync (p.Id, ct)
+                                                              : _state.Backend.PinAsync (p.Id, ct));
     }
 
     private void ToggleBatchSelect (Package? p)
@@ -1164,7 +1165,9 @@ public sealed class App : Runnable
 
                           try
                           {
-                              result = await _state.Backend.UpgradeAsync (id, CancellationToken.None);
+                              // Per-item progress would fight the batch loop's own status line; the
+                              // loop reports "Upgrading {id}…" per package instead.
+                              result = await _state.Backend.UpgradeAsync (id, null, CancellationToken.None);
                           }
                           catch (Exception ex)
                           {
@@ -1195,12 +1198,15 @@ public sealed class App : Runnable
                   });
     }
 
-    private void RunOperation (string activity, Func<CancellationToken, Task<OpResult>> op)
+    private void RunOperation (string activity, Func<IProgress<OpProgress>, CancellationToken, Task<OpResult>> op)
     {
         _state.StatusMessage = activity;
         _state.Loading = true;
         _state.StatusIsError = false;
+        _state.OpProgress = null;
         RefreshStatusBar ();
+
+        IProgress<OpProgress> progress = new UiProgress (this);
 
         Task.Run (async () =>
                   {
@@ -1208,7 +1214,7 @@ public sealed class App : Runnable
 
                       try
                       {
-                          result = await op (CancellationToken.None);
+                          result = await op (progress, CancellationToken.None);
                       }
                       catch (Exception ex)
                       {
@@ -1223,6 +1229,7 @@ public sealed class App : Runnable
                       App?.Invoke (() =>
                                    {
                                        _state.Loading = false;
+                                       _state.OpProgress = null;
                                        _state.StatusMessage = result.Success ? "Done" : result.Message;
                                        _state.StatusIsError = !result.Success;
 
@@ -1234,6 +1241,33 @@ public sealed class App : Runnable
                                        TriggerRefresh ();
                                    });
                   });
+    }
+
+    /// <summary>
+    /// Apply a backend progress sample to the status bar. Runs on the UI thread (marshaled by
+    /// <see cref="UiProgress"/>). Ignored once the operation has settled so a late report can't
+    /// resurrect the progress bar after the final "Done".
+    /// </summary>
+    private void OnOpProgress (OpProgress value)
+    {
+        if (!_state.Loading)
+        {
+            return;
+        }
+
+        _state.OpProgress = value;
+        RefreshStatusBar ();
+    }
+
+    private void ReportProgress (OpProgress value) => App?.Invoke (() => OnOpProgress (value));
+
+    /// <summary>
+    /// <see cref="IProgress{T}"/> bridge that marshals backend progress (raised on a background
+    /// or COM thread) onto the Terminal.Gui UI thread before touching view state.
+    /// </summary>
+    private sealed class UiProgress (App owner) : IProgress<OpProgress>
+    {
+        public void Report (OpProgress value) => owner.ReportProgress (value);
     }
 
     private bool Confirm (string title, string message)

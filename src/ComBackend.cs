@@ -176,7 +176,7 @@ public sealed class ComBackend : IBackend
     // Writes
     // ------------------------------------------------------------------------
 
-    public async Task<OpResult> InstallAsync (string id, string? version, CancellationToken ct)
+    public async Task<OpResult> InstallAsync (string id, string? version, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         Operation op = new () { Kind = OperationKind.Install, PackageId = id, Version = version };
         CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: false, ct);
@@ -204,14 +204,18 @@ public sealed class ComBackend : IBackend
             options.PackageVersionId = versionId;
         }
 
-        InstallResult result = await _pm.InstallPackageAsync (pkg, options).AsTask (ct);
+        // Set the progress handler on the WinRT op before awaiting; it fires on a COM thread,
+        // so the IProgress<> the caller supplies is responsible for marshaling to the UI.
+        var asyncOp = _pm.InstallPackageAsync (pkg, options);
+        asyncOp.Progress = (_, p) => progress?.Report (MapInstall (p));
+        InstallResult result = await asyncOp.AsTask (ct);
 
         return result.Status == InstallResultStatus.Ok
                    ? Ok (op, $"Installed {pkg.Name}{(result.RebootRequired ? " (reboot required)" : string.Empty)}")
                    : Fail (op, DescribeInstall (result));
     }
 
-    public async Task<OpResult> UpgradeAsync (string id, CancellationToken ct)
+    public async Task<OpResult> UpgradeAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         Operation op = new () { Kind = OperationKind.Upgrade, PackageId = id };
 
@@ -230,14 +234,16 @@ public sealed class ComBackend : IBackend
             AcceptPackageAgreements = true
         };
 
-        InstallResult result = await _pm.UpgradePackageAsync (pkg, options).AsTask (ct);
+        var asyncOp = _pm.UpgradePackageAsync (pkg, options);
+        asyncOp.Progress = (_, p) => progress?.Report (MapInstall (p));
+        InstallResult result = await asyncOp.AsTask (ct);
 
         return result.Status == InstallResultStatus.Ok
                    ? Ok (op, $"Upgraded {pkg.Name}{(result.RebootRequired ? " (reboot required)" : string.Empty)}")
                    : Fail (op, DescribeInstall (result));
     }
 
-    public async Task<OpResult> UninstallAsync (string id, CancellationToken ct)
+    public async Task<OpResult> UninstallAsync (string id, IProgress<OpProgress>? progress, CancellationToken ct)
     {
         Operation op = new () { Kind = OperationKind.Uninstall, PackageId = id };
         CatalogPackage? pkg = await FindByIdAsync (id, SourceFilter.All, installedContext: true, ct);
@@ -248,7 +254,9 @@ public sealed class ComBackend : IBackend
         }
 
         UninstallOptions options = new () { PackageUninstallMode = PackageUninstallMode.Silent };
-        UninstallResult result = await _pm.UninstallPackageAsync (pkg, options).AsTask (ct);
+        var asyncOp = _pm.UninstallPackageAsync (pkg, options);
+        asyncOp.Progress = (_, p) => progress?.Report (MapUninstall (p));
+        UninstallResult result = await asyncOp.AsTask (ct);
 
         return result.Status == UninstallResultStatus.Ok
                    ? Ok (op, $"Uninstalled {pkg.Name}{(result.RebootRequired ? " (reboot required)" : string.Empty)}")
@@ -476,6 +484,44 @@ public sealed class ComBackend : IBackend
         }
 
         return copy;
+    }
+
+    /// <summary>Map the WinGet install/upgrade progress struct onto the backend-agnostic model.</summary>
+    private static OpProgress MapInstall (InstallProgress p)
+    {
+        OpPhase phase = p.State switch
+        {
+            PackageInstallProgressState.Queued => OpPhase.Queued,
+            PackageInstallProgressState.Downloading => OpPhase.Downloading,
+            PackageInstallProgressState.Installing => OpPhase.Installing,
+            PackageInstallProgressState.PostInstall => OpPhase.Finalizing,
+            PackageInstallProgressState.Finished => OpPhase.Done,
+            _ => OpPhase.Installing
+        };
+
+        double fraction = p.State switch
+        {
+            PackageInstallProgressState.Downloading => p.DownloadProgress,
+            PackageInstallProgressState.Installing => p.InstallationProgress,
+            PackageInstallProgressState.Finished => 1.0,
+            _ => 0.0
+        };
+
+        return new (phase, fraction);
+    }
+
+    private static OpProgress MapUninstall (UninstallProgress p)
+    {
+        OpPhase phase = p.State switch
+        {
+            PackageUninstallProgressState.Queued => OpPhase.Queued,
+            PackageUninstallProgressState.Uninstalling => OpPhase.Installing,
+            PackageUninstallProgressState.PostUninstall => OpPhase.Finalizing,
+            PackageUninstallProgressState.Finished => OpPhase.Done,
+            _ => OpPhase.Installing
+        };
+
+        return new (phase, p.UninstallationProgress);
     }
 
     private static string DescribeInstall (InstallResult result)

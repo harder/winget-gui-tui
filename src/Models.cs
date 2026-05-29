@@ -186,3 +186,37 @@ public sealed class OpResult
     public bool Success { get; init; }
     public string Message { get; init; } = string.Empty;
 }
+
+/// <summary>
+/// Coarse phase of a long-running install/upgrade/uninstall, backend-agnostic. The COM
+/// backend maps the WinGet <c>InstallProgress</c>/<c>UninstallProgress</c> states onto these;
+/// the mock backend synthesizes them; the CLI backend can't report progress so it reports none.
+/// </summary>
+public enum OpPhase
+{
+    Queued,
+    Downloading,
+    Installing,
+    Finalizing,
+    Done
+}
+
+/// <summary>
+/// A single progress sample for an in-flight operation. <see cref="Fraction"/> is 0..1 within
+/// the current <see cref="Phase"/> (or overall once installing). Reported via
+/// <see cref="System.IProgress{T}"/> through the backend operation methods.
+/// </summary>
+public readonly record struct OpProgress (OpPhase Phase, double Fraction)
+{
+    /// <summary>Human-readable label for the status bar.</summary>
+    public string Label
+        => Phase switch
+        {
+            OpPhase.Queued => "Queued",
+            OpPhase.Downloading => "Downloading",
+            OpPhase.Installing => "Installing",
+            OpPhase.Finalizing => "Finalizing",
+            OpPhase.Done => "Done",
+            _ => string.Empty
+        };
+}

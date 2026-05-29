@@ -128,7 +128,20 @@ public sealed class StatusBar : View
     public bool IsLoading { get; set; }
     public int Tick { get; set; }
 
+    /// <summary>When set, a determinate progress bar replaces the spinner (install/upgrade/uninstall).</summary>
+    public OpProgress? Op { get; set; }
+
     private static readonly char [] _spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+    /// <summary>Render a compact fixed-width progress bar like <c>▕████░░░░░░▏  42%</c>.</summary>
+    private static string RenderBar (double fraction)
+    {
+        const int width = 10;
+        fraction = Math.Clamp (fraction, 0, 1);
+        int filled = (int)Math.Round (fraction * width);
+
+        return $"▕{new string ('█', filled)}{new string ('░', width - filled)}▏ {fraction * 100,3:0}%";
+    }
 
     /// <inheritdoc />
     protected override bool OnDrawingContent (DrawContext? context)
@@ -181,10 +194,15 @@ public sealed class StatusBar : View
         int hintsWidth = HintsWidth (visiblePairs, elided);
         int hintsStart = Math.Max (x0 + 1, Viewport.Width - hintsWidth);
 
-        // Status message between filters and hints
+        // Status message between filters and hints. A running operation shows a determinate
+        // progress bar with its phase; an indeterminate load shows the braille spinner.
         string msg = Message;
 
-        if (IsLoading)
+        if (Op is { } op)
+        {
+            msg = $"{RenderBar (op.Fraction)} {op.Label}  {msg}";
+        }
+        else if (IsLoading)
         {
             char spin = _spinner [Tick % _spinner.Length];
             msg = $"{spin} {msg}";
@@ -199,7 +217,7 @@ public sealed class StatusBar : View
 
         Attribute msgAttr = IsError
                                 ? new Attribute (Theme.Danger, Theme.Surface, TextStyle.Bold)
-                                : IsLoading
+                                : IsLoading || Op is not null
                                     ? new Attribute (Theme.Accent, Theme.Surface)
                                     : new Attribute (Theme.TextPrimary, Theme.Surface);
         SetAttribute (msgAttr);
