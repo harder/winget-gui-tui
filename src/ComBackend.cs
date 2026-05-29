@@ -474,6 +474,15 @@ public sealed class ComBackend : IBackend
 
         string dir = DownloadDirectory ();
 
+        try
+        {
+            Directory.CreateDirectory (dir);
+        }
+        catch (Exception ex)
+        {
+            return Fail (op, $"Could not prepare download folder '{dir}': {ex.Message}");
+        }
+
         DownloadOptions options = new ()
         {
             DownloadDirectory = dir,
@@ -503,23 +512,10 @@ public sealed class ComBackend : IBackend
 
     /// <summary>Where DownloadPackageAsync drops installers: a stable folder under the user's Downloads.</summary>
     private static string DownloadDirectory ()
-    {
-        string dir = Path.Combine (
+        => Path.Combine (
             Environment.GetFolderPath (Environment.SpecialFolder.UserProfile),
             "Downloads",
             "winget-tui");
-
-        try
-        {
-            Directory.CreateDirectory (dir);
-        }
-        catch
-        {
-            // If we can't pre-create it, let the COM server attempt the download anyway.
-        }
-
-        return dir;
-    }
 
     /// <summary>Map the user's advanced-install choices onto the WinGet InstallOptions.</summary>
     private static void ApplyInstallSettings (InstallOptions options, InstallSettings? settings)

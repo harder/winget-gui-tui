@@ -1190,10 +1190,12 @@ public sealed class App : Runnable
 
         if (settings is null)
         {
-            return;
+            return; // cancelled
         }
 
-        ConfirmAndInstall (p, null, settings);
+        // All-default selection means "backend defaults" — normalize to null so it behaves
+        // identically to a plain install on every backend (no per-backend "Default" ambiguity).
+        ConfirmAndInstall (p, null, settings.IsDefault ? null : settings);
     }
 
     private InstallSettings? PromptAdvancedOptions (Package p)

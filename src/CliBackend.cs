@@ -74,18 +74,18 @@ public sealed partial class CliBackend : IBackend
             Environment.GetFolderPath (Environment.SpecialFolder.UserProfile),
             "Downloads",
             "winget-tui");
+        Operation op = new () { Kind = OperationKind.Download, PackageId = id, Version = version };
 
         try
         {
             Directory.CreateDirectory (dir);
         }
-        catch
+        catch (Exception ex)
         {
-            // Let winget attempt the download even if we couldn't pre-create the folder.
+            return new () { Operation = op, Success = false, Message = $"Could not prepare download folder '{dir}': {ex.Message}" };
         }
 
         (int code, string output) = await RunWithCodeAsync (DownloadArgs (id, version, dir), ct);
-        Operation op = new () { Kind = OperationKind.Download, PackageId = id, Version = version };
 
         return new () { Operation = op, Success = code == 0, Message = code == 0 ? $"Downloaded to {dir}" : output };
     }

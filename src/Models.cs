@@ -207,6 +207,13 @@ public sealed class InstallSettings
     public InstallModePref Mode { get; init; } = InstallModePref.Default;
     public InstallArchPref Architecture { get; init; } = InstallArchPref.Default;
     public string? CustomArgs { get; init; }
+
+    /// <summary>True when nothing was customized — callers normalize this to null ("backend defaults").</summary>
+    public bool IsDefault
+        => Scope == InstallScopePref.Default
+           && Mode == InstallModePref.Default
+           && Architecture == InstallArchPref.Default
+           && string.IsNullOrWhiteSpace (CustomArgs);
 }
 
 public sealed class Operation
