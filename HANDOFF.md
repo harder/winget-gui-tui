@@ -15,17 +15,64 @@ interactive TUI; the agent handled builds, non-interactive checks, diagnosis, an
 
 ---
 
+## 🚨 HEADLINE FINDING (session 2) — the COM backend does NOT run under Native AOT
+
+**`new PackageManager()` throws `0x80073D54` (`APPMODEL_ERROR_NO_PACKAGE`) in the AOT build**, so
+`SelectBackend` (Program.cs) catches it and **silently falls back to the CLI backend**. The
+"COM backend unavailable…" stderr note is immediately painted over by the TUI, so it's invisible.
+**Proven** by the COM-only `V` (Verify) action reporting *"Verify is only available on the COM
+backend"* on a default launch.
+
+Implications:
+- **P0 item 3 (default = COM) FAILS.** The shipped AOT app never runs COM.
+- **Most "P0 on COM" passes were actually the CLI backend** (which also yields structured
+  search/list/details — indistinguishable in the UI). They validate the UI + CLI path, not COM.
+- **`#17` (missing Tags/Support/Docs) is a symptom, not a bug** — those are COM-only fields, `null`
+  on CLI by design. Not a composite-catalog bug (the earlier hypothesis is withdrawn).
+- Every COM-only P1 feature (Verify, real version picker, install preview, live progress) would also
+  have silently been CLI/absent.
+
+Evidence (all reproducible right now, post-reboot):
+- AOT build: activation FAILS on both MTA main thread and MTA threadpool thread.
+- **Same source built non-AOT (JIT, self-contained x64): activation SUCCEEDS** (3 catalogs) — even
+  with the server warmed by JIT moments earlier. ⇒ AOT-specific, not server state, not apartment.
+- A **clean AOT spike** (verified no `coreclr.dll`) also FAILS — so it's not app-vs-spike either.
+
+Tried, did NOT fix: CsWinRT AOT optimizer (`Microsoft.Windows.CsWinRT 2.2.0` + `CsWinRTAotOptimizerEnabled=Auto`);
+`app.manifest` with Win10 `supportedOS` + `longPathAware`; warming the OOP server with a JIT process first.
+(All reverted — tree is clean.)
+
+**Caveat / open contradiction:** EARLY in the session (before heavy COM-diagnostic abuse + a reboot),
+an AOT spike DID activate COM (3 catalogs + the AOT `foreach` signature). So AOT-COM is not
+categorically impossible on this machine. The current deterministic failure may be entangled with
+COM-server/AppModel state the abuse+reboot left in an odd condition, OR a genuine AOT activation bug
+the early run happened to avoid. **The machine state is compromised — a clean read is needed.**
+
+**DECISIVE NEXT EXPERIMENT (do this first, on a clean reboot):** before launching the TUI or running
+any winget/COM command, run the AOT build's diagnostic:
+`winget-tui-sharp.exe --comdiag` (the publish-dir binary still has this flag; snippet in the appendix
+to re-add after a rebuild). 
+- **Activates (catalogs = 3)** → it was transient state; AOT-COM works; **redo the real P0/P1
+  verification on COM** (prior passes were CLI).
+- **Still fails** → genuine AOT activation bug. Avenues: `Microsoft.Windows.CsWinRT` **3.x** (AOT-first,
+  but may conflict with the projection's bundled WinRT.Runtime 2.2.0); `Microsoft.WindowsPackageManager.InProcCom`
+  (bundle the COM server in-process, ~100 MB); or **ship the Windows/COM build non-AOT** (JIT/ReadyToRun —
+  confirmed to activate COM). File an upstream CsWinRT/WinGet issue with the `--comdiag` output.
+
+---
+
 ## TL;DR
 
-- **P0 (foundational COM-on-AOT runtime): ✅ 9/9 PASS.** The headline AOT risk (`InvalidCastException`
-  from enumerating WinRT-projected collections) does **not** occur in the real app — the indexed
-  `Materialize<T>` pattern holds.
-- **P1: in progress.** One **confirmed bug (`#17` richer detail panel)**, root cause not yet pinned.
-  Two **fixes already applied** (debounce, contrast). The rest of P1 (install/version-picker/
-  download/advanced/verify/progress/cancellation) is **not yet tested** — all need a healthy COM server.
-- **P2:** not started; one perf observation already folded into a fix (see debounce).
-- **Self-inflicted blocker:** the agent wedged the WinGet out-of-proc COM server with too many rapid,
-  crash-prone diagnostic processes. **Recovery: re-register App Installer or reboot** (details below).
+- **P0: 8/9 nominally "pass" but on the CLI backend; item 3 (default = COM) actually FAILS** — see the
+  headline finding. The genuine, COM-independent passes: AOT publish + no-InvalidCastException + the
+  UI/CLI behaviors. The AOT-publish toolchain works; the COM backend does not activate under AOT.
+- **P1: blocked on the COM-activation issue** — every COM-only feature needs COM to actually run.
+  Two **quality fixes applied & committed** (detail-load debounce, msstore contrast) — compile-clean,
+  still need runtime verification once COM works.
+- **P2:** not started.
+- **A temporary `--comdiag` diagnostic** (apartment + activation probe) was used and reverted from
+  source; the current publish-dir AOT binary still contains it for the clean-reboot retest. Snippet
+  to re-add is in the appendix.
 
 ---
 
@@ -110,7 +157,13 @@ the indexed pattern on this host.
 
 ---
 
-## THE OPEN BUG: `#17` richer detail panel (Tags / Product code / Family name / Support / Documentation)
+## `#17` richer detail panel — RESOLVED as a symptom of the headline finding (not a bug)
+
+> **UPDATE (session 2):** the composite-catalog hypothesis below is **WITHDRAWN.** The fields never
+> render because the app is on the **CLI fallback** (COM didn't activate under AOT — see the headline
+> finding), and Tags/Support/Documentation are COM-only (`null` on CLI by design). The spike evidence
+> below still stands (the COM data exists and is readable), so once COM activation is fixed, `#17`
+> should resolve with no further code change. The original (now-moot) analysis is kept for context:
 
 **Symptom:** None of these fields ever render in the detail panel, for any package, including
 `Microsoft.PowerToys` which definitely has them.
@@ -177,23 +230,56 @@ addresses.
 
 ---
 
-## Resume plan (next Windows session, COM healthy)
+## Resume plan (next Windows session)
 
-1. Recover COM (re-register App Installer or reboot); confirm `winget-tui-sharp.exe` launches with no
-   "COM backend unavailable" fallback and Search returns structured results.
-2. **Verify the two applied fixes** on the rebuilt binary:
+**STEP 0 — settle the headline finding FIRST (everything else depends on it).** On a **clean reboot**,
+before launching the TUI or running any winget/COM command, run the AOT diagnostic:
+`bin\Release\net10.0-windows10.0.26100.0\win-x64\publish\winget-tui-sharp.exe --comdiag`
+(the publish-dir binary still has `--comdiag`; if you rebuilt, re-add it from the appendix).
+- **`activation OK; catalogs = 3`** → AOT-COM works on a clean machine; the session's failures were
+  transient state from the diagnostic abuse. Proceed to re-verify P0/P1 **on COM** (prior passes were CLI).
+- **`activation FAILED … APPMODEL_ERROR_NO_PACKAGE`** → genuine AOT activation bug. Pursue, in order of
+  cost: (a) try `Microsoft.Windows.CsWinRT` **3.x** overriding the bundled WinRT.Runtime 2.2.0; (b) the
+  `InProcCom` package (~100 MB, in-proc server); (c) ship the COM/Windows build **non-AOT** (JIT confirmed
+  working) — the cleanest pragmatic option if AOT activation can't be made reliable; (d) file upstream with
+  the `--comdiag` output (AOT fails / JIT works, same machine, MTA, server warm).
+
+**Once COM actually activates:**
+1. Re-run the full P0 checklist confirming COM is active (e.g. `V` shows a real verify dialog, not the
+   "COM-only" message; detail panel shows Tags/Support/Docs on PowerToys).
+2. **Verify the two applied quality fixes** on the COM build:
    - Debounce: hold ↓ to scroll the list fast — detail panel should NOT freeze for tens of seconds;
      settles within ~0.2s on the row you stop on.
    - Contrast: highlight the msstore row in a powertoys search — Source cell text readable when selected.
-3. **Root-cause + fix `#17`** via the `--comshow` dump (appendix), then rebuild + re-verify on PowerToys.
-4. **Run the rest of P1** with `ajeetdsouza.zoxide` (do the non-destructive dialog checks first —
-   `i` preview→Cancel, `I` version list→Cancel, `A` options→Cancel, `V` positive — then the real
-   install/download/uninstall/upgrade, progress bar, and `Esc` cancellation; finally batch upgrade).
+3. **Re-check `#17`** — with COM live it should now show Tags/Support/Documentation (the spike proved the
+   data is there). No code fix expected beyond the activation fix.
+4. **Run P1** with `ajeetdsouza.zoxide` (non-destructive dialog checks first — `i` preview→Cancel,
+   `I` version list→Cancel, `A` options→Cancel, `V` positive — then real install/download/uninstall/upgrade,
+   progress bar, `Esc` cancellation; finally batch upgrade).
 5. **P2 (#20):** shared-`PackageManager` thread-agility (watch RPC_E_WRONG_THREAD); unhealthy-source + `All`
    (break msstore, confirm `f`→winget recovers); pinning (`p`/`P`, needs winget on PATH); AOT vs CLI binary
    size; optional arm64.
-6. Check off boxes in `WINDOWS-TESTING.md` as items pass; **commit the checklist + the `#17` fix**; remove
-   `--comshow` again before final commit.
+6. Update `WINDOWS-TESTING.md` boxes; commit; remove any `--comshow`/`--comdiag` diagnostic before final commit.
+
+### `--comdiag` (apartment + activation probe) — re-add to Program.cs after `using WingetTuiSharp;`
+```csharp
+#if WINGET_COM
+if (args.Length > 0 && args [0] is "--comdiag")
+{
+    Console.WriteLine ($"main thread apartment = {System.Threading.Thread.CurrentThread.GetApartmentState ()}");
+    try { var pm = new Microsoft.Management.Deployment.PackageManager (); Console.WriteLine ($"main-thread activation OK; catalogs = {pm.GetPackageCatalogs ().Count}"); }
+    catch (Exception ex) { Console.WriteLine ($"main-thread activation FAILED: 0x{(uint)ex.HResult:X8} {ex.Message}"); }
+    await System.Threading.Tasks.Task.Run (() => {
+        Console.WriteLine ($"threadpool apartment = {System.Threading.Thread.CurrentThread.GetApartmentState ()}");
+        try { var pm = new Microsoft.Management.Deployment.PackageManager (); Console.WriteLine ($"threadpool activation OK; catalogs = {pm.GetPackageCatalogs ().Count}"); }
+        catch (Exception ex) { Console.WriteLine ($"threadpool activation FAILED: 0x{(uint)ex.HResult:X8} {ex.Message}"); }
+    });
+    return;
+}
+#endif
+```
+Quick JIT-vs-AOT check (no Dev Shell needed for the JIT build):
+`dotnet publish -c Release -f net10.0-windows10.0.26100.0 -r win-x64 -p:PublishAot=false --self-contained true -o bin\jit-x64-test` then run `bin\jit-x64-test\winget-tui-sharp.exe --comdiag`.
 
 ---
 

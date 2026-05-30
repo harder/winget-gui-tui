@@ -26,9 +26,33 @@ For quick iteration without AOT: `dotnet run -f net10.0-windows10.0.26100.0`.
 
 ## P0 — Foundational COM runtime (must pass first)
 
+> ### 🚨 CRITICAL FINDING — the AOT build cannot activate the COM backend
+> **`new PackageManager()` throws `0x80073D54` (`APPMODEL_ERROR_NO_PACKAGE`) in the Native-AOT
+> build**, so `SelectBackend` catches it and **silently falls back to the CLI backend** (the
+> "COM backend unavailable…" stderr note is painted over by the TUI redraw, so it's invisible).
+> Confirmed by the COM-only `V` (Verify) action reporting *"Verify is only available on the COM
+> backend"* in the default launch.
+>
+> - The **same source built non-AOT (JIT, self-contained x64) activates COM fine** (3 catalogs),
+>   even with the server warmed by JIT moments earlier. So the failure is **AOT-specific**, not
+>   server state, not apartment (both threads are MTA).
+> - **Did NOT fix it:** CsWinRT AOT optimizer (`Microsoft.Windows.CsWinRT` + `CsWinRTAotOptimizerEnabled=Auto`);
+>   an `app.manifest` with Win10 `supportedOS` + `longPathAware`; warming the server first.
+> - **Caveat:** EARLY in the session (before heavy COM-diagnostic abuse + a reboot) an AOT *spike*
+>   DID activate COM (3 catalogs + the AOT foreach signature), so AOT-COM is not categorically
+>   impossible here — the current deterministic failure may be entangled with COM-server/AppModel
+>   state, OR a genuine AOT activation bug the early run avoided. Machine state is compromised.
+> - **DECISIVE NEXT EXPERIMENT (clean state):** fresh reboot → as the *very first* COM activity,
+>   run the AOT build's `--comdiag` (binary in the publish dir still has it). Activates → transient
+>   state, redo the real verification on COM. Still fails → genuine AOT bug → CsWinRT 3.x / upstream
+>   issue / `InProcCom` / ship the COM build non-AOT (JIT confirmed working).
+> - **Consequence for the results below:** items marked ✅ that "passed on COM" were almost
+>   certainly exercising the **CLI** backend (which also yields structured search/list/details, so
+>   it was indistinguishable). They validate the UI + CLI path, NOT the COM backend. See HANDOFF.md.
+
 - [x] **AOT publish succeeds** and produces a native exe; `coreclr.dll` is absent (true AOT, not self-contained). *(23.3 MB exe; verified coreclr.dll absent. On an ARM64 host the publish must run inside `Enter-VsDevShell -DevCmdArguments "-arch=x64 -host_arch=arm64"` with the VS Installer dir on PATH — ILC 10.0.8 calls bare `vswhere.exe`.)*
 - [x] **No `InvalidCastException` anywhere at runtime.** The whole backend uses indexed `Materialize<T>` instead of `foreach` over projected collections (the spike's AOT rule). Exercise search/list/upgrades/show and confirm none throw the spike's original cast error. *(Clean across search, installed, upgrades, and details. Spike re-confirmed the indexed pattern on this host.)*
-- [x] **Default backend = COM** on the Windows build with no flags (not CLI). Sanity: search is fast/structured, IDs are never truncated with `…`. *(No fallback note on launch; catalog search returns full structured IDs across winget+msstore. The `…` in the table is Terminal.Gui column clipping, not data truncation.)*
+- [ ] ❌ **FAILS — Default backend is NOT COM.** The AOT build can't activate `PackageManager`, so the default silently runs the **CLI** backend (proven: `V` reports "only available on the COM backend"). See the critical-finding banner above. *(The fast/structured search and full IDs we saw are the CLI backend's output, which also looks structured — they did not prove COM was active.)*
 - [x] **Flag selection** works: `--cli`, `--com`, `--mock` pick the right backend; **`--cli` wins when both `--cli` and `--com` are passed** (precedence `--mock > --cli > --com > default`). *(`--mock --cli --com` → 10 mock pkgs; `--cli --com` → CLI backend, V reports COM-only on real packages.)*
 - [x] **Search** (Search tab `1`, then `/`) returns real catalog results with version + source columns. *(18 results for "powertoys" across winget + msstore.)*
 - [x] **Installed** tab lists installed packages with correct installed versions. *(248 packages; PowerToys 0.98.1 etc., correlated via COM LocalCatalogs composite.)*
@@ -79,7 +103,7 @@ Operations (pick a small, safe package to install/uninstall, e.g. a CLI tool):
 
 **Richer detail panel** (COM):
 
-- [ ] ❌ **FAILS** — the detail panel for a package shows the extra manifest fields when present: **Tags**, **Product code**, **Family name**, a clickable **Support** link, and **Documentation** links. *Confirmed broken: Microsoft.PowerToys (which has 10 Tags, a PublisherSupportUrl, and a Wiki Documentation link per `winget show` and the spike) renders NONE of them. The spike proved the COM data is present and readable via the backend's indexed pattern from a SINGLE winget-catalog connect, so the suspect is `ComBackend.ShowAsync`'s COMPOSITE-`All` catalog path. Root cause NOT yet confirmed — needs one `--comshow` dump on Windows with a healthy COM server (see HANDOFF.md). Do not "fix" until confirmed.*
+- [ ] ⚠️ **Not a bug — symptom of the AOT COM-activation failure.** The extra manifest fields (**Tags**, **Product code**, **Family name**, **Support**, **Documentation**) never render because the app is running on the **CLI** backend (COM didn't activate — see the critical-finding banner), and these fields are COM-only (`null` on CLI by design, per `Models.cs`). The spike proved the COM data exists and is readable via the backend's indexed pattern, so once COM activation is fixed this should work. Re-test after the COM-on-AOT issue is resolved.
 - [x] Packages without these fields don't render empty rows (the lines are omitted when absent). *(Confirmed — absent fields cleanly omitted.)*
 
 **Live progress bar** (the headline feature — also tests `.Progress` delegate marshaling under AOT, the one CCW-callback unknown):
